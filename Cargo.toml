@@ -1,0 +1,23 @@
+[package]
+name = "poster_demo"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+axum = { version = "0.8.8", features = ["macros"] }
+axum-extra = { version = "0.12.3", features = ["cookie"] }
+color-eyre = "0.6.5"
+eyre = "0.6.12"
+futures = "0.3.31"
+reqwest = { version = "0.12.28", features = ["json"] }
+rusqlite = "0.38.0"
+serde = "1.0.228"
+serde_json = "1.0.147"
+thiserror = "2.0.17"
+time = "0.3.44"
+tokio = { version = "1.48.0", features = ["full"] }
+tracing = "0.1.44"
+tracing-subscriber = { version = "0.3.22", features = ["env-filter"] }
+tracing-tree = "0.4.1"
+url = "2.5.7"
+uuid = { version = "1.19.0", features = ["v4"] }
