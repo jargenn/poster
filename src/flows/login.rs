@@ -316,17 +316,10 @@ impl OAuth<Redirected> {
 #[instrument(skip(app, cookies))]
 pub async fn fb_login(State(app): State<AppState>, cookies: CookieJar) -> axum::response::Response {
     if let Some(session_cookie) = cookies.get("session_id") {
-        debug!(
-            %session_cookie,
-        );
         if let Ok(session_id) = SessionId::parse(session_cookie.value()) {
-            debug!(
-                %session_id,
-                "Session ID returned when trying to shortcircuit login"
-            );
-            if let Ok(Some(_auth)) = load_session(&app.db, &session_id) {
-                info!("User already logged in");
-                return Redirect::to("/debug/session").into_response();
+            if let Ok(Some(auth)) = load_session(&app.db, &session_id) {
+                debug!("User already logged in");
+                return (StatusCode::OK, auth.user_access_token).into_response();
             }
         }
     }
