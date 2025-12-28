@@ -1,7 +1,0 @@
-app_id: "1408225520952821"
-app_secret: "5264b009d76aaa3ed19f60767c349c3d"
-fb_config_id: "25537253695887249"
-database_path: "store.db"
-redirect_uri: "http://localhost:3000/facebook/oauth/callback"
-
-
