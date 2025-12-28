@@ -1,9 +1,11 @@
-use axum::{Json, extract::State};
+use axum::{Extension, Json};
 use axum_extra::extract::CookieJar;
+use r2d2::Pool;
+use r2d2_sqlite::SqliteConnectionManager;
 use serde::Serialize;
 use tracing::instrument;
 
-use crate::{AppState, cookies::SessionId, db::load_session};
+use crate::{cookies::SessionId, db::load_session};
 
 #[derive(Serialize)]
 pub struct DebugSession {
@@ -14,8 +16,11 @@ pub struct DebugSession {
     user_id: Option<String>,
 }
 
-#[instrument(skip(app, cookies))]
-pub async fn debug_session(State(app): State<AppState>, cookies: CookieJar) -> Json<DebugSession> {
+#[instrument("Inspecting the cookie jar", skip(pool, cookies))]
+pub async fn debug_session(
+    Extension(pool): Extension<Pool<SqliteConnectionManager>>,
+    cookies: CookieJar,
+) -> Json<DebugSession> {
     let cookie = cookies.get("session_id");
 
     if cookie.is_none() {
@@ -43,7 +48,10 @@ pub async fn debug_session(State(app): State<AppState>, cookies: CookieJar) -> J
         }
     };
 
-    let session = load_session(&app.db, &session_id).ok().flatten();
+    let conn = pool
+        .get()
+        .expect("Couldn't get access to a connection in the pool");
+    let session = load_session(&conn, &session_id).ok().flatten();
 
     match session {
         None => Json(DebugSession {

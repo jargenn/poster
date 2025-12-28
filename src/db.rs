@@ -1,12 +1,11 @@
-use std::{
-    path::Path,
-    time::{Duration, UNIX_EPOCH},
-};
+use std::time::{Duration, UNIX_EPOCH};
 
-use rusqlite::{Connection, params};
+use color_eyre::owo_colors::OwoColorize;
+use eyre::Result;
+use r2d2_sqlite::rusqlite::{Connection, params};
 use tracing::{debug, info, instrument};
 
-use crate::{cookies::SessionId, login::Authorized};
+use crate::{auth::Authorized, cookies::SessionId};
 
 // TODO: Make this better
 pub fn create_database() {
@@ -27,7 +26,7 @@ CREATE TABLE if not exists auth_sessions (
     .expect("Failed to create auth_sessions table");
 }
 
-#[instrument]
+#[instrument("cleaning expired sessions")]
 pub fn cleanup_sessions() {
     let conn = Connection::open("store.db").unwrap();
     let deleted = conn
@@ -42,7 +41,7 @@ pub fn cleanup_sessions() {
     if deleted > 0 {
         info!(deleted, "expired sessions cleaned up");
     } else {
-        debug!("no expired sessions to clean");
+        info!("no expired sessions to clean");
     }
 }
 
@@ -54,11 +53,7 @@ pub fn cleanup_sessions() {
         app_id = %auth.app_id
     )
 )]
-pub fn store_session(
-    conn: &Connection,
-    session_id: &SessionId,
-    auth: &Authorized,
-) -> rusqlite::Result<()> {
+pub fn store_session(conn: &Connection, session_id: &SessionId, auth: &Authorized) -> Result<()> {
     tracing::info!("storing auth session");
     conn.execute(
         r#"
@@ -89,16 +84,12 @@ pub fn store_session(
     )?;
     Ok(())
 }
-#[instrument(
-    skip(db),
-    fields(session_id = %session_id)
+#[instrument("Searching for the session_id in the database"
+    skip(conn),
+    fields(session_id = %session_id.bold())
 )]
-pub fn load_session(
-    db: impl AsRef<Path>,
-    session_id: &SessionId,
-) -> rusqlite::Result<Option<Authorized>> {
+pub fn load_session(conn: &Connection, session_id: &SessionId) -> Result<Option<Authorized>> {
     debug!("loading session");
-    let conn = Connection::open(db)?;
     let mut stmt = conn.prepare(
         r#"
         SELECT
@@ -137,7 +128,7 @@ pub fn load_session(
     }))
 }
 #[instrument(skip(conn), fields(session_id = %session_id))]
-pub fn delete_session(conn: &Connection, session_id: &SessionId) -> rusqlite::Result<()> {
+pub fn delete_session(conn: &Connection, session_id: &SessionId) -> Result<()> {
     let deleted = conn.execute(
         "DELETE FROM auth_sessions WHERE session_id = ?1",
         params![session_id.to_string()],
