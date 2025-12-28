@@ -1,15 +1,18 @@
-use std::time::{Duration, UNIX_EPOCH};
+use std::{
+    path::Path,
+    time::{Duration, UNIX_EPOCH},
+};
 
 use color_eyre::owo_colors::OwoColorize;
 use eyre::Result;
 use r2d2_sqlite::rusqlite::{Connection, params};
 use tracing::{debug, info, instrument};
 
-use crate::{auth::Authorized, cookies::SessionId};
+use crate::{cookies::SessionId, facebook_graph_api::auth::Authorized};
 
 // TODO: Make this better
-pub fn create_database() {
-    let conn = Connection::open("store.db").unwrap();
+pub fn create_database(db_path: impl AsRef<Path>) {
+    let conn = Connection::open(db_path).unwrap();
     conn.execute_batch(
         "BEGIN;
 CREATE TABLE if not exists auth_sessions (
@@ -32,7 +35,7 @@ pub fn cleanup_sessions() {
     let deleted = conn
         .execute(
             "DELETE FROM auth_sessions
-                WHERE expires_at < strftime('%s','now');
+                WHERE expires_at < unixepoch('now');
             ",
             [],
         )
@@ -127,6 +130,7 @@ pub fn load_session(conn: &Connection, session_id: &SessionId) -> Result<Option<
         last_verified_at: UNIX_EPOCH + Duration::from_secs(last_verified_at as u64),
     }))
 }
+
 #[instrument(skip(conn), fields(session_id = %session_id))]
 pub fn delete_session(conn: &Connection, session_id: &SessionId) -> Result<()> {
     let deleted = conn.execute(

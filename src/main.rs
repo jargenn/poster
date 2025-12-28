@@ -1,9 +1,11 @@
+use poster::AppConfig;
+use secrecy::ExposeSecret as _;
 use std::time::Duration;
 
 use eyre::Result;
 use poster::{
     db::{cleanup_sessions, create_database},
-    server::{AppState, start_server},
+    server::start_server,
     telemetry,
 };
 use tracing::error;
@@ -11,12 +13,12 @@ use tracing::error;
 #[tokio::main]
 async fn main() -> Result<()> {
     color_eyre::install()?;
-    let state = AppState::new()?;
+    let config_file = std::env::var("CONFIG_FILE").unwrap_or_else(|_| "config".to_owned());
+    let config = AppConfig::from_config(config_file.into())?;
 
-    #[cfg(debug_assertions)]
-    dbg!(&state);
+    dbg!(&config);
 
-    create_database();
+    create_database(config.database_path.expose_secret());
     telemetry::init_tracing();
 
     tokio::spawn(async move {
@@ -28,7 +30,7 @@ async fn main() -> Result<()> {
 
     // let (ready_tx, ready_rx) = oneshot::channel();
     // tokio::spawn(async {
-    if let Err(err) = start_server(state).await {
+    if let Err(err) = start_server(config).await {
         error!("Server error: {err}");
     }
     // });

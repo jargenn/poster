@@ -10,7 +10,6 @@ pub fn init_tracing() {
     let log_file = OpenOptions::new()
         .create(true)
         .append(true)
-        .write(true)
         .open("logs.json")
         .expect("Failed to open log file");
 

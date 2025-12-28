@@ -2,16 +2,15 @@ use eyre::Result;
 use serde::{Deserialize, Serialize};
 use tracing::instrument;
 
+mod app_config;
 pub mod cookies;
+pub use app_config::*;
 pub mod db;
-#[cfg(debug_assertions)]
 pub mod debug;
 pub mod extractors;
-pub mod flows;
+pub mod facebook_graph_api;
 pub mod server;
 pub mod telemetry;
-
-pub use flows::*;
 
 pub fn get_page_id_url(version: String, user_id: usize, user_access_token: String) -> String {
     format!(

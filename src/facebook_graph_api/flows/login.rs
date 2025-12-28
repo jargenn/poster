@@ -3,9 +3,9 @@
 use std::collections::HashMap;
 
 use crate::{
-    auth::{CsrfToken, OAuth},
     cookies::{SessionId, build_session_cookie},
     db::{load_session, store_session},
+    facebook_graph_api::auth::{CsrfToken, OAuth},
     server::AppState,
 };
 use axum::{
@@ -123,7 +123,7 @@ pub async fn fb_callback(
         .exchange_token(
             &client,
             &app.config.app_id,
-            &app.config.app_secret.expose_secret(),
+            app.config.app_secret.expose_secret(),
         )
         .await
     {

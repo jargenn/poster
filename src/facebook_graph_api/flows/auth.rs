@@ -76,6 +76,7 @@ pub struct TokenIssued {
     pub user_access_token: String,
     pub expires_in: Duration,
     pub token_type: String,
+    pub issued_at: SystemTime,
 }
 
 impl OAuth<TokenIssued> {
@@ -115,7 +116,7 @@ impl OAuth<TokenIssued> {
                 user_access_token: self.state.user_access_token,
                 app_id: expected_app_id.to_owned(),
                 user_id,
-                expires_at: Some(SystemTime::now() + self.state.expires_in),
+                expires_at: Some(self.state.issued_at + self.state.expires_in),
                 last_verified_at: SystemTime::now(),
             },
         })
@@ -284,6 +285,7 @@ impl OAuth<Redirected> {
                 user_access_token: token.access_token,
                 token_type: token.token_type,
                 expires_in: Duration::from_secs(token.expires_in),
+                issued_at: SystemTime::now(),
             },
         })
     }
