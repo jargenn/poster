@@ -8,7 +8,8 @@ use eyre::Result;
 use r2d2_sqlite::rusqlite::{Connection, params};
 use tracing::{debug, instrument};
 
-use crate::{cookies::SessionId, facebook_graph_api::auth::Authorized};
+use crate::cookies::SessionId;
+use facebook_graph_api::auth::Authorized;
 
 // TODO: Make this better
 pub fn create_database(db_path: impl AsRef<Path>) {

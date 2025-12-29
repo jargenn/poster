@@ -6,7 +6,7 @@ use r2d2_sqlite::{
 use reqwest::Client;
 use tracing::{info, instrument};
 
-use crate::facebook_graph_api::auth::Authorized;
+use facebook_graph_api::auth::Authorized;
 
 #[instrument("cleaning and verifying sessions", skip(db_path,  app_secret))]
 pub async fn maintain_sessions(db_path: &str, app_id: &str, app_secret: &str) {

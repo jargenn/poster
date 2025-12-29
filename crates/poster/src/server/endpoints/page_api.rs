@@ -2,11 +2,8 @@ use axum::{Extension, Json, extract::State};
 use reqwest::{Client, StatusCode};
 use tracing::instrument;
 
-use crate::{
-    extractors::LoggedIn,
-    facebook_graph_api::page_api::{FacebookPages, get_facebook_pages},
-    server::AppState,
-};
+use crate::{extractors::LoggedIn, server::AppState};
+use facebook_graph_api::page_api::{FacebookPages, get_facebook_pages};
 
 #[axum::debug_handler]
 #[instrument(skip(client, auth))]

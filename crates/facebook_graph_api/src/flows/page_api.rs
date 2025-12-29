@@ -1,10 +1,10 @@
-use eyre::Result;
 use reqwest::Client;
 use serde::Deserialize;
 use serde::Serialize;
 use tracing::debug;
 
-use crate::facebook_graph_api::FbStatusCode;
+use crate::Error;
+use crate::GraphApiError;
 
 fn page_access_token_endpoint(version: &str, user_id: &str, user_access_token: &str) -> String {
     // curl -i -X GET "https://graph.facebook.com/{your-user-id}/accounts?access_token={user-access-token}"
@@ -57,19 +57,12 @@ pub struct PageCredentials {
     pub page_access_token: usize,
 }
 
-// TODO: IMPLEMENTE from_bytes for FbStatusCode and get rid of this
-#[derive(serde::Deserialize)]
-struct FbError {
-    code: u32,
-    error_subcode: Option<u16>,
-}
-
 pub async fn get_facebook_pages(
     client: &Client,
     version: &str,
     user_id: &str,
     user_access_token: &str,
-) -> Result<FacebookPages> {
+) -> Result<FacebookPages, Error> {
     tracing::info!(%user_id, "requesting page credentials");
 
     let endpoint = page_access_token_endpoint(version, user_id, user_access_token);
@@ -79,25 +72,23 @@ pub async fn get_facebook_pages(
 
     let status = res.status();
 
-    let bytes = res.bytes().await?;
-    debug!("{}", String::from_utf8_lossy(&bytes));
+    let text = res.text().await?;
+    debug!("{}", text);
 
     if !status.is_success() {
-        let fb_err = serde_json::from_slice::<FbError>(&bytes)?;
-        let fb_err = FbStatusCode::from_parts(fb_err.code, fb_err.error_subcode)?;
+        let graph_error = GraphApiError::from_response_body(&text)?;
 
         tracing::warn!(
             %user_id,
-            fb_code = fb_err.code,
-            fb_subcode = ?fb_err.subcode,
-            reason = fb_err.canonical_reason(),
+            fb_code = %graph_error.code,
+            trace_id = %graph_error.trace_id,
             "facebook rejected request"
         );
 
-        return Err(fb_err.into());
+        return Err(graph_error)?;
     }
 
-    let credentials = serde_json::from_slice::<FacebookPages>(&bytes)?;
+    let credentials = serde_json::from_str::<FacebookPages>(&text)?;
 
     Ok(credentials)
 }

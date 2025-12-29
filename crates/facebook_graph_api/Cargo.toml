@@ -1,0 +1,20 @@
+[package]
+name = "facebook_graph_api"
+edition = "2024"
+version.workspace = true
+
+[dependencies]
+reqwest.workspace = true
+thiserror = "2.0.17"
+tracing.workspace = true
+uuid.workspace = true
+url.workspace = true
+serde_json.workspace = true
+serde.workspace = true
+
+[dev-dependencies]
+expect-test = "1.5.1"
+tokio = { version = "1.48.0", features = ["full"] }
+wiremock = "0.6.5"
+
+

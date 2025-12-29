@@ -1,25 +1,13 @@
+use reqwest::Client;
+use serde::{Deserialize, Serialize};
 use std::{
     ops::Deref,
     time::{Duration, SystemTime, UNIX_EPOCH},
 };
-
-use axum::response::Redirect;
-use eyre::Result;
-use reqwest::Client;
-use serde::{Deserialize, Serialize};
+use tracing::debug;
 use url::Url;
 
-#[derive(Debug, Serialize, Deserialize, thiserror::Error)]
-pub enum AuthError {
-    #[error("The access token you are using doesn't belong to the this App")]
-    WrongApp,
-    #[error("Provided access token is no longer valid")]
-    InvalidToken,
-    #[error("You are not logged in to the App")]
-    NotLoggedIn,
-    #[error("Access token has expired")]
-    Expired,
-}
+use crate::{AuthError, Error};
 
 // /// TODO: Search for what scopes are there.
 // #[derive(Debug, Serialize, Deserialize)]
@@ -74,7 +62,7 @@ pub struct Start {
 #[derive(Debug)]
 pub struct TokenIssued {
     pub user_access_token: String,
-    pub expires_in: Duration,
+    pub expires_in: Option<Duration>,
     pub token_type: String,
     pub issued_at: SystemTime,
 }
@@ -85,7 +73,7 @@ impl OAuth<TokenIssued> {
         client: &Client,
         expected_app_id: &str,
         app_secret: &str,
-    ) -> Result<OAuth<Authorized>> {
+    ) -> Result<OAuth<Authorized>, Error> {
         let app_access_token = format!("{}|{}", expected_app_id, app_secret);
 
         let debug_endpoint = Url::parse_with_params(
@@ -108,27 +96,28 @@ impl OAuth<TokenIssued> {
         );
 
         if !status.is_success() {
-            return Err(AuthError::InvalidToken.into());
+            return Err(AuthError::InvalidToken)?;
         }
 
         let debug_data: DebugAccessTokenResponse = serde_json::from_str(&body)?;
 
         if !debug_data.data.is_valid {
-            return Err(AuthError::InvalidToken.into());
+            return Err(AuthError::InvalidToken)?;
         }
 
         if debug_data.data.app_id != expected_app_id {
-            return Err(AuthError::WrongApp.into());
+            return Err(AuthError::WrongApp)?;
         }
 
-        let expires_at = debug_data
-            .data
-            .expires_at
-            .map(|timestamp| UNIX_EPOCH + Duration::from_secs(timestamp));
+        // A expires_at with value 0 could mean that it is a long-lived token
+        let expires_at = match debug_data.data.expires_at {
+            Some(0) | None => None,
+            Some(timestamp) => Some(UNIX_EPOCH + Duration::from_secs(timestamp)),
+        };
 
         if let Some(exp) = expires_at {
             if SystemTime::now() >= exp {
-                return Err(AuthError::Expired.into());
+                return Err(AuthError::Expired)?;
             }
         }
 
@@ -171,7 +160,12 @@ impl Authorized {
         elapsed > Duration::from_hours(1)
     }
 
-    pub async fn verify(&mut self, client: &Client, app_id: &str, app_secret: &str) -> Result<()> {
+    pub async fn verify(
+        &mut self,
+        client: &Client,
+        app_id: &str,
+        app_secret: &str,
+    ) -> Result<(), Error> {
         let app_access_token = format!("{}|{}", app_id, app_secret);
 
         let debug_endpoint = Url::parse_with_params(
@@ -194,27 +188,28 @@ impl Authorized {
         );
 
         if !status.is_success() {
-            return Err(AuthError::InvalidToken.into());
+            return Err(AuthError::InvalidToken)?;
         }
 
         let debug_data: DebugAccessTokenResponse = serde_json::from_str(&body)?;
 
         if !debug_data.data.is_valid {
-            return Err(AuthError::InvalidToken.into());
+            return Err(AuthError::InvalidToken)?;
         }
 
         if debug_data.data.app_id != app_id {
-            return Err(AuthError::WrongApp.into());
+            return Err(AuthError::WrongApp)?;
         }
 
-        let expires_at = debug_data
-            .data
-            .expires_at
-            .map(|timestamp| UNIX_EPOCH + Duration::from_secs(timestamp));
+        // A expires_at with value 0 could mean that it is a long-lived token
+        let expires_at = match debug_data.data.expires_at {
+            None | Some(0) => None,
+            Some(t) => Some(UNIX_EPOCH + Duration::from_secs(t)),
+        };
 
         if let Some(exp) = expires_at {
             if SystemTime::now() >= exp {
-                return Err(AuthError::Expired.into());
+                return Err(AuthError::Expired)?;
             }
         }
 
@@ -248,7 +243,8 @@ impl OAuth<Start> {
         }
     }
 
-    pub fn redirect(self, config_id: &str) -> (Redirect, CsrfToken) {
+    /// Returns the redirect URI and a Cross-Site Reference Token
+    pub fn redirect(self, config_id: &str) -> (Url, CsrfToken) {
         let url = Url::parse_with_params(
             "https://www.facebook.com/v24.0/dialog/oauth",
             &[
@@ -261,7 +257,7 @@ impl OAuth<Start> {
         )
         .expect("Couldn't parse redirect url");
 
-        (Redirect::temporary(url.as_str()), self.state.csrf_token)
+        (url, self.state.csrf_token)
     }
 
     pub fn from_callback(
@@ -285,7 +281,7 @@ impl OAuth<Redirected> {
         client: &Client,
         app_id: &str,
         app_secret: &str,
-    ) -> Result<OAuth<TokenIssued>> {
+    ) -> Result<OAuth<TokenIssued>, Error> {
         let res = client
             .get("https://graph.facebook.com/v24.0/oauth/access_token")
             .query(&[
@@ -295,23 +291,35 @@ impl OAuth<Redirected> {
                 ("code", &self.state.code),
             ])
             .send()
-            .await?
-            .error_for_status()?;
+            .await
+            .map_err(|e| {
+                tracing::error!(error = %e, "Failed to send OAuth token request");
+                e
+            })?;
+
+        let status = res.status();
+        let body = res.text().await?;
+
+        debug!(
+            status = %status,
+            body = %body,
+            "Facebook OAuth token response received"
+        );
 
         #[derive(serde::Deserialize)]
         struct TokenResponse {
             access_token: String,
             token_type: String,
-            expires_in: u64,
+            expires_in: Option<u64>,
         }
 
-        let token = res.json::<TokenResponse>().await?;
+        let token = serde_json::from_str::<TokenResponse>(&body)?;
 
         Ok(OAuth {
             state: TokenIssued {
                 user_access_token: token.access_token,
                 token_type: token.token_type,
-                expires_in: Duration::from_secs(token.expires_in),
+                expires_in: token.expires_in.map(Duration::from_secs),
                 issued_at: SystemTime::now(),
             },
         })

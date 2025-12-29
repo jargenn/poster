@@ -10,7 +10,7 @@ use wiremock::{
     matchers::{method, path, query_param},
 };
 
-fn check(status: FbStatusCode, expect: Expect) {
+fn check(status: ErrorCode, expect: Expect) {
     expect.assert_debug_eq(&status);
 }
 
@@ -58,14 +58,14 @@ async fn facebook_v24_0_me_190() {
     let code = err["code"].as_u64().unwrap() as u32;
     let subcode = err["error_subcode"].as_u64().unwrap() as u16;
 
-    let status = FbStatusCode::from_parts(code, Some(subcode)).expect("invalid fb status code");
+    let status = ErrorCode::from_parts(code, Some(subcode)).expect("invalid fb status code");
 
-    assert_eq!(status, FbStatusCode::TOKEN_EXPIRED);
+    assert_eq!(status, ErrorCode::TOKEN_EXPIRED);
     check(
         status,
         expect![[r#"
-        FbStatusCode(190, Some(463))
-    "#]],
+            ErrorCode(190, Some(463))
+        "#]],
     );
     check_reason(
         status.canonical_reason(),

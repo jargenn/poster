@@ -3,7 +3,7 @@ use eyre::Result;
 use secrecy::SecretString;
 use serde::Deserialize;
 
-use crate::facebook_graph_api::auth::RedirectUri;
+use facebook_graph_api::auth::RedirectUri;
 
 #[derive(Debug, Clone, Deserialize)]
 pub struct AppConfig {

@@ -5,18 +5,18 @@ use std::collections::HashMap;
 use crate::{
     cookies::{SessionId, build_session_cookie},
     db::{load_session, store_session},
-    facebook_graph_api::auth::{CsrfToken, OAuth},
     server::AppState,
 };
 use axum::{
     Extension,
     extract::{Query, State},
-    response::IntoResponse,
+    response::{IntoResponse, Redirect},
 };
 use axum_extra::extract::{
     CookieJar,
     cookie::{Cookie, SameSite},
 };
+use facebook_graph_api::auth::{CsrfToken, OAuth};
 use r2d2::Pool;
 use r2d2_sqlite::SqliteConnectionManager;
 use reqwest::{Client, StatusCode, header};
@@ -24,7 +24,7 @@ use secrecy::ExposeSecret;
 use tracing::{debug, error, info, instrument};
 
 #[axum::debug_handler]
-#[instrument("Starting login flow", skip(app, cookies, pool))]
+#[instrument("OAuth login endpoint", skip(app, cookies, pool))]
 pub async fn fb_login(
     State(app): State<AppState>,
     cookies: CookieJar,
@@ -44,8 +44,11 @@ pub async fn fb_login(
         }
     }
 
+    info!("Starting user authentication");
+
     let start_auth = OAuth::new(app.config.app_id, app.config.redirect_uri);
-    let (redirect, csrf_token) = start_auth.redirect(app.config.fb_config_id.expose_secret());
+    let (redirect_url, csrf_token) = start_auth.redirect(app.config.fb_config_id.expose_secret());
+    let redirect = Redirect::temporary(redirect_url.as_str());
 
     // TODO: Work on this later
     const IS_COOKIE_SECURE: bool = false;
@@ -74,7 +77,7 @@ pub async fn fb_login(
 }
 
 #[axum::debug_handler]
-#[instrument("Facebook callback stub", skip(app, cookies, params, pool))]
+#[instrument("Login Facebook callback", skip(app, cookies, params, pool, client))]
 pub async fn fb_callback(
     State(app): State<AppState>,
     Extension(client): Extension<Client>,
@@ -132,7 +135,10 @@ pub async fn fb_callback(
         .await
     {
         Ok(a) => a,
-        Err(_) => return (StatusCode::BAD_GATEWAY, cookies, "Token exchange failed"),
+        Err(e) => {
+            error!(%e, "Failed to exchange token");
+            return (StatusCode::BAD_GATEWAY, cookies, "Token exchange failed");
+        }
     };
 
     tracing::debug!("Token exchanged");
@@ -146,8 +152,8 @@ pub async fn fb_callback(
         .await
     {
         Ok(auth) => auth,
-        Err(_) => {
-            error!("Failed to verify issued token");
+        Err(e) => {
+            error!(%e, "Failed to verify issued token");
             return (StatusCode::UNAUTHORIZED, cookies, "Invalid token");
         }
     };

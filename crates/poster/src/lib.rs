@@ -5,6 +5,5 @@ pub use app_config::*;
 pub mod db;
 pub mod debug;
 pub mod extractors;
-pub mod facebook_graph_api;
 pub mod server;
 pub mod telemetry;

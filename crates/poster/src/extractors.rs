@@ -8,9 +8,8 @@ use r2d2::Pool;
 use r2d2_sqlite::SqliteConnectionManager;
 use tracing::instrument;
 
-use crate::{
-    cookies::SessionId, db::load_session, facebook_graph_api::auth::Authorized, server::AppState,
-};
+use crate::{cookies::SessionId, db::load_session, server::AppState};
+use facebook_graph_api::auth::Authorized;
 
 pub struct LoggedIn(pub Authorized);
 

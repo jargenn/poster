@@ -16,33 +16,32 @@ use std::{
 ///
 /// # Examples
 /// ```
-/// use poster::facebook_graph_api::FbStatusCode;
+/// use facebook_graph_api::ErrorCode;
 ///
-/// assert_eq!(FbStatusCode::from_parts(190, Some(463)).unwrap(), FbStatusCode::TOKEN_EXPIRED);
-/// assert_eq!(FbStatusCode::INVALID_SESSION.as_parts(), (190,492));
+/// assert_eq!(ErrorCode::from_parts(190, Some(463)).unwrap(), ErrorCode::TOKEN_EXPIRED);
+/// assert_eq!(ErrorCode::INVALID_SESSION.as_parts(), (190,492));
 ///
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct FbStatusCode {
+pub struct ErrorCode {
     pub code: NonZeroU32,
     pub subcode: Option<NonZeroU16>,
 }
-/// A possible error value when converting a `FbStatusCode` from a parts.
+/// A possible error value when converting a `ErrorCode` from a parts.
 ///
-pub struct InvalidStatusCode {
+pub struct InvalidErrorCode {
     _priv: (),
 }
 
-impl FbStatusCode {
+impl ErrorCode {
     /// This functions validates the correctness of the supplied subcode. The ErrorCodes defined in
     /// the facebook docs don't have strong invariants so the correctness check is loosed.
     pub const fn from_parts(
         code: u32,
         subcode: Option<u16>,
-    ) -> Result<FbStatusCode, InvalidStatusCode> {
-        // TODO: Figure out good invariants to enforce for sanity
+    ) -> Result<ErrorCode, InvalidErrorCode> {
         let code = match NonZeroU32::new(code) {
             Some(c) => c,
-            None => return Err(InvalidStatusCode::new()),
+            None => return Err(InvalidErrorCode::new()),
         };
 
         let subcode = match subcode {
@@ -50,7 +49,7 @@ impl FbStatusCode {
             Some(0) => None,
             Some(v) => match NonZeroU16::new(v) {
                 Some(v) => Some(v),
-                None => return Err(InvalidStatusCode::new()),
+                None => return Err(InvalidErrorCode::new()),
             },
         };
 
@@ -65,42 +64,40 @@ impl FbStatusCode {
     pub fn canonical_reason(&self) -> Option<&'static str> {
         canonical_reason(self.code.into(), self.subcode.map(NonZeroU16::get))
     }
-
-    // pub fn from_bytes(src: &[u8]) -> Result<FbStatusCode, InvalidStatusCode> {}
 }
 
-impl fmt::Debug for FbStatusCode {
+impl fmt::Debug for ErrorCode {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "FbStatusCode({}, {:?})",
+            "ErrorCode({}, {:?})",
             self.code.get(),
             self.subcode.map(|v| v.get())
         )
     }
 }
 
-impl PartialEq<FbStatusCode> for (u32, u16) {
-    fn eq(&self, other: &FbStatusCode) -> bool {
+impl PartialEq<ErrorCode> for (u32, u16) {
+    fn eq(&self, other: &ErrorCode) -> bool {
         *self == other.as_parts()
     }
 }
 
-impl PartialEq<(u32, u16)> for FbStatusCode {
+impl PartialEq<(u32, u16)> for ErrorCode {
     fn eq(&self, other: &(u32, u16)) -> bool {
         self.as_parts() == *other
     }
 }
 
-impl TryFrom<(u32, u16)> for FbStatusCode {
-    type Error = InvalidStatusCode;
+impl TryFrom<(u32, u16)> for ErrorCode {
+    type Error = InvalidErrorCode;
 
     fn try_from(t: (u32, u16)) -> Result<Self, Self::Error> {
         let subcode = match t.1 {
             0 => None,
             v => Some(v),
         };
-        FbStatusCode::from_parts(t.0, subcode)
+        ErrorCode::from_parts(t.0, subcode)
     }
 }
 
@@ -109,10 +106,10 @@ impl TryFrom<(u32, u16)> for FbStatusCode {
 /// # Example
 ///
 /// ```
-/// # use poster::facebook_graph_api::FbStatusCode;
-/// assert_eq!(format!("{}", FbStatusCode::API_PERMISSION_DENIED), "(10,0) Permission is either not granted or has been removed");
+/// # use facebook_graph_api::ErrorCode;
+/// assert_eq!(format!("{}", ErrorCode::API_PERMISSION_DENIED), "(10,0) Permission is either not granted or has been removed");
 /// ```
-impl fmt::Display for FbStatusCode {
+impl fmt::Display for ErrorCode {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let (code, subcode) = self.as_parts();
         write!(
@@ -123,19 +120,19 @@ impl fmt::Display for FbStatusCode {
     }
 }
 
-impl Error for FbStatusCode {}
+impl Error for ErrorCode {}
 
-macro_rules! fb_status_codes {
+macro_rules! fb_error_codes {
     (
         $(
             $(#[$docs:meta])*
             ($code:expr, $subcode:expr, $konst:ident, $phrase:expr);
         )+
     ) => {
-        impl FbStatusCode {
+        impl ErrorCode {
         $(
             $(#[$docs])*
-            pub const $konst: FbStatusCode = FbStatusCode {
+            pub const $konst: ErrorCode= ErrorCode {
                 code: unsafe { NonZeroU32::new_unchecked($code)},
                 subcode: match $subcode {
                     0 => None,
@@ -159,7 +156,7 @@ macro_rules! fb_status_codes {
 }
 
 // https://developers.facebook.com/docs/graph-api/guides/error-handling#errorcodes
-fb_status_codes! {
+fb_error_codes! {
     /// OAuth / Access token invalid or expired
     (190, 0, INVALID_TOKEN, "Access token is invalid, expired, or revoked");
     /// Access token invalid (subcode)
@@ -203,22 +200,22 @@ fb_status_codes! {
     (190, 492, INVALID_SESSION, "User associated with the Page access token does not have an appropriate role");
 }
 
-impl InvalidStatusCode {
-    const fn new() -> InvalidStatusCode {
+impl InvalidErrorCode {
+    const fn new() -> InvalidErrorCode {
         Self { _priv: () }
     }
 }
 
-impl fmt::Debug for InvalidStatusCode {
+impl fmt::Debug for InvalidErrorCode {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         f.debug_struct("InvalidStatusCode").finish()
     }
 }
 
-impl fmt::Display for InvalidStatusCode {
+impl fmt::Display for InvalidErrorCode {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_str("invalid status code")
     }
 }
 
-impl Error for InvalidStatusCode {}
+impl Error for InvalidErrorCode {}
