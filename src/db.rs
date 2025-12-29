@@ -6,7 +6,7 @@ use std::{
 use color_eyre::owo_colors::OwoColorize;
 use eyre::Result;
 use r2d2_sqlite::rusqlite::{Connection, params};
-use tracing::{debug, info, instrument};
+use tracing::{debug, instrument};
 
 use crate::{cookies::SessionId, facebook_graph_api::auth::Authorized};
 
@@ -27,25 +27,6 @@ CREATE TABLE if not exists auth_sessions (
         COMMIT;",
     )
     .expect("Failed to create auth_sessions table");
-}
-
-#[instrument("cleaning expired sessions")]
-pub fn cleanup_sessions() {
-    let conn = Connection::open("store.db").unwrap();
-    let deleted = conn
-        .execute(
-            "DELETE FROM auth_sessions
-                WHERE expires_at < unixepoch('now');
-            ",
-            [],
-        )
-        .expect("Failed to delete sessions");
-
-    if deleted > 0 {
-        info!(deleted, "expired sessions cleaned up");
-    } else {
-        info!("no expired sessions to clean");
-    }
 }
 
 #[instrument(

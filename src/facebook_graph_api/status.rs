@@ -23,8 +23,8 @@ use std::{
 ///
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct FbStatusCode {
-    code: NonZeroU32,
-    subcode: Option<NonZeroU16>,
+    pub code: NonZeroU32,
+    pub subcode: Option<NonZeroU16>,
 }
 /// A possible error value when converting a `FbStatusCode` from a parts.
 ///
@@ -65,6 +65,8 @@ impl FbStatusCode {
     pub fn canonical_reason(&self) -> Option<&'static str> {
         canonical_reason(self.code.into(), self.subcode.map(NonZeroU16::get))
     }
+
+    // pub fn from_bytes(src: &[u8]) -> Result<FbStatusCode, InvalidStatusCode> {}
 }
 
 impl fmt::Debug for FbStatusCode {
@@ -101,6 +103,27 @@ impl TryFrom<(u32, u16)> for FbStatusCode {
         FbStatusCode::from_parts(t.0, subcode)
     }
 }
+
+/// Formats the status code, *including* the canonical reason.
+///
+/// # Example
+///
+/// ```
+/// # use poster::facebook_graph_api::FbStatusCode;
+/// assert_eq!(format!("{}", FbStatusCode::API_PERMISSION_DENIED), "(10,0) Permission is either not granted or has been removed");
+/// ```
+impl fmt::Display for FbStatusCode {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let (code, subcode) = self.as_parts();
+        write!(
+            f,
+            "({code},{subcode}) {}",
+            self.canonical_reason().unwrap_or("<unknown error code>")
+        )
+    }
+}
+
+impl Error for FbStatusCode {}
 
 macro_rules! fb_status_codes {
     (

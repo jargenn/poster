@@ -1,6 +1,6 @@
 use std::{
     ops::Deref,
-    time::{Duration, SystemTime},
+    time::{Duration, SystemTime, UNIX_EPOCH},
 };
 
 use axum::response::Redirect;
@@ -11,7 +11,7 @@ use url::Url;
 
 #[derive(Debug, Serialize, Deserialize, thiserror::Error)]
 pub enum AuthError {
-    #[error("The access token you are using doesnt belong to the this App")]
+    #[error("The access token you are using doesn't belong to the this App")]
     WrongApp,
     #[error("Provided access token is no longer valid")]
     InvalidToken,
@@ -43,9 +43,9 @@ struct DebugAccessTokenData {
     application: String,
     expires_at: Option<u64>,
     is_valid: bool,
-    issued_at: String,
-    metadata: DebugResponseMetadata,
-    // TODO: Model it properly
+    issued_at: u64,
+    #[serde(default)]
+    metadata: Option<DebugResponseMetadata>,
     scopes: Vec<String>,
     user_id: String,
 }
@@ -80,43 +80,64 @@ pub struct TokenIssued {
 }
 
 impl OAuth<TokenIssued> {
-    pub async fn verify(self, client: &Client, expected_app_id: &str) -> Result<OAuth<Authorized>> {
-        let res = client
-            .get("https://graph.facebook.com/v24.0/me")
-            .query(&[
-                ("access_token", &self.state.user_access_token),
-                ("fields", &"id".to_string()),
-            ])
-            .send()
-            .await?;
+    pub async fn verify(
+        self,
+        client: &Client,
+        expected_app_id: &str,
+        app_secret: &str,
+    ) -> Result<OAuth<Authorized>> {
+        let app_access_token = format!("{}|{}", expected_app_id, app_secret);
 
+        let debug_endpoint = Url::parse_with_params(
+            "https://graph.facebook.com/v24.0/debug_token",
+            &[
+                ("input_token", &self.state.user_access_token),
+                ("access_token", &app_access_token),
+            ],
+        )
+        .expect("Failed to parse debug_token URL");
+
+        let res = client.get(debug_endpoint).send().await?;
         let status = res.status();
         let body = res.text().await?;
 
         tracing::debug!(
             %status,
             %body,
-            "Facebook /me verification response"
+            "Facebook debug_token verification response"
         );
 
         if !status.is_success() {
             return Err(AuthError::InvalidToken.into());
         }
 
-        let me: serde_json::Value = serde_json::from_str(&body)?;
+        let debug_data: DebugAccessTokenResponse = serde_json::from_str(&body)?;
 
-        let user_id = me
-            .get("id")
-            .and_then(|v| v.as_str())
-            .ok_or(AuthError::InvalidToken)?
-            .to_string();
+        if !debug_data.data.is_valid {
+            return Err(AuthError::InvalidToken.into());
+        }
+
+        if debug_data.data.app_id != expected_app_id {
+            return Err(AuthError::WrongApp.into());
+        }
+
+        let expires_at = debug_data
+            .data
+            .expires_at
+            .map(|timestamp| UNIX_EPOCH + Duration::from_secs(timestamp));
+
+        if let Some(exp) = expires_at {
+            if SystemTime::now() >= exp {
+                return Err(AuthError::Expired.into());
+            }
+        }
 
         Ok(OAuth {
             state: Authorized {
                 user_access_token: self.state.user_access_token,
                 app_id: expected_app_id.to_owned(),
-                user_id,
-                expires_at: Some(self.state.issued_at + self.state.expires_in),
+                user_id: debug_data.data.user_id,
+                expires_at,
                 last_verified_at: SystemTime::now(),
             },
         })
@@ -124,7 +145,7 @@ impl OAuth<TokenIssued> {
 }
 
 // TODO: Completar con lo que dice la doc de Facebook
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Authorized {
     pub user_access_token: String,
     pub app_id: String,
@@ -150,29 +171,54 @@ impl Authorized {
         elapsed > Duration::from_hours(1)
     }
 
-    pub async fn verify(&mut self, client: &Client, app_access_token: &str) -> Result<()> {
+    pub async fn verify(&mut self, client: &Client, app_id: &str, app_secret: &str) -> Result<()> {
+        let app_access_token = format!("{}|{}", app_id, app_secret);
+
         let debug_endpoint = Url::parse_with_params(
-            "https://graph.facebook.com/debug_token",
+            "https://graph.facebook.com/v24.0/debug_token",
             &[
                 ("input_token", self.user_access_token.clone()),
-                ("access_token", app_access_token.to_string()),
+                ("access_token", app_access_token),
             ],
         )
         .expect("Failed to parse user_access_token debug URL");
 
-        let debug_data = {
-            let res = client.get(debug_endpoint).send().await?;
-            res.json::<DebugAccessTokenResponse>().await?
-        };
+        let res = client.get(debug_endpoint).send().await?;
+        let status = res.status();
+        let body = res.text().await?;
+
+        tracing::debug!(
+            %status,
+            %body,
+            "Facebook debug_token verification response"
+        );
+
+        if !status.is_success() {
+            return Err(AuthError::InvalidToken.into());
+        }
+
+        let debug_data: DebugAccessTokenResponse = serde_json::from_str(&body)?;
 
         if !debug_data.data.is_valid {
             return Err(AuthError::InvalidToken.into());
         }
 
-        if debug_data.data.app_id != self.app_id {
+        if debug_data.data.app_id != app_id {
             return Err(AuthError::WrongApp.into());
         }
 
+        let expires_at = debug_data
+            .data
+            .expires_at
+            .map(|timestamp| UNIX_EPOCH + Duration::from_secs(timestamp));
+
+        if let Some(exp) = expires_at {
+            if SystemTime::now() >= exp {
+                return Err(AuthError::Expired.into());
+            }
+        }
+
+        self.expires_at = expires_at;
         self.last_verified_at = SystemTime::now();
 
         Ok(())
@@ -183,25 +229,6 @@ impl Authorized {
 pub enum AuthState {
     LoggedIn(Authorized),
     LoggedOut,
-}
-
-impl AuthState {
-    pub async fn ensure_valid(&mut self, client: &Client, app_access_token: &str) -> Result<()> {
-        match self {
-            AuthState::LoggedOut => Err(AuthError::NotLoggedIn.into()),
-            AuthState::LoggedIn(auth) => {
-                if auth.locally_expired() {
-                    return Err(AuthError::Expired.into());
-                }
-
-                if auth.needs_remote_verification() {
-                    auth.verify(client, app_access_token).await?;
-                }
-
-                Ok(())
-            }
-        }
-    }
 }
 
 pub struct OAuth<S> {

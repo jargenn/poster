@@ -12,7 +12,7 @@ use tower_http::trace::TraceLayer;
 use tracing::{error, info, warn};
 
 use crate::facebook_graph_api::login::{fb_callback, fb_login};
-use crate::server::AppState;
+use crate::server::{AppState, endpoints};
 use crate::{AppConfig, debug::debug_session};
 
 pub async fn start_server(config: AppConfig) -> Result<()> {
@@ -42,6 +42,10 @@ pub async fn start_server(config: AppConfig) -> Result<()> {
         .route("/facebook/login", get(fb_login))
         .route("/facebook/oauth/callback", get(fb_callback))
         .route("/debug/session", get(debug_session))
+        .route(
+            "/page_api/page_credentials",
+            get(endpoints::page_api::facebooks_pages),
+        )
         .layer(Extension(
             reqwest::ClientBuilder::new()
                 .timeout(Duration::from_secs(5))

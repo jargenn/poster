@@ -82,6 +82,10 @@ pub async fn fb_callback(
     cookies: axum_extra::extract::CookieJar,
     Query(params): Query<HashMap<String, String>>,
 ) -> impl IntoResponse {
+    let conn = pool
+        .get()
+        .expect("Couldn't get access to a connection in the pool");
+
     if let Some(error) = params.get("error") {
         let reason = params.get("error_reason");
         let desc = params.get("error_description");
@@ -133,7 +137,14 @@ pub async fn fb_callback(
 
     tracing::debug!("Token exchanged");
 
-    let auth_token = match token_issued.verify(&client, &app.config.app_id).await {
+    let auth_token = match token_issued
+        .verify(
+            &client,
+            &app.config.app_id,
+            app.config.app_secret.expose_secret(),
+        )
+        .await
+    {
         Ok(auth) => auth,
         Err(_) => {
             error!("Failed to verify issued token");
@@ -144,10 +155,6 @@ pub async fn fb_callback(
     tracing::debug!("Token verified");
 
     let session_id = SessionId::new();
-    // TODO: Remove this connection creation
-    let conn = pool
-        .get()
-        .expect("Couldn't get access to a connection in the pool");
 
     store_session(&conn, &session_id, &auth_token.state)
         .expect("Some error happened while storing the session id in the cookies");
