@@ -485,6 +485,7 @@ dependencies = [
 name = "facebook_graph_api"
 version = "0.0.1"
 dependencies = [
+ "axum",
  "expect-test",
  "reqwest",
  "serde",

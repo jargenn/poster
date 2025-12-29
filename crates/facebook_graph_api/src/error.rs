@@ -2,6 +2,15 @@ use std::num::{NonZeroU16, NonZeroU32};
 
 use serde::Deserialize;
 
+#[cfg(feature = "axum")]
+use axum::{
+    Json,
+    http::StatusCode,
+    response::{IntoResponse, Response},
+};
+#[cfg(feature = "axum")]
+use serde_json::json;
+
 use crate::ErrorCode;
 
 #[derive(Debug, thiserror::Error)]
@@ -15,6 +24,27 @@ pub enum Error {
     Reqwest(#[from] reqwest::Error),
     #[error("JSON error: {0}")]
     Json(#[from] serde_json::Error),
+    #[error("Business error: {0}")]
+    Business(#[from] BusinessError),
+}
+
+#[cfg(feature = "axum")]
+impl IntoResponse for Error {
+    fn into_response(self) -> Response {
+        let (status, message) = match &self {
+            Error::Auth(err) => (StatusCode::UNAUTHORIZED, err.to_string()),
+            Error::GraphApi(err) => (err.code.into(), err.to_string()),
+            Error::Reqwest(_) => (StatusCode::BAD_GATEWAY, "Upstream service error".into()),
+            Error::Json(_) => (StatusCode::BAD_REQUEST, "Invalid JSON payload".into()),
+            Error::Business(err) => (StatusCode::UNPROCESSABLE_ENTITY, err.to_string()),
+        };
+
+        let body = Json(json!({
+            "error": message,
+        }));
+
+        (status, body).into_response()
+    }
 }
 
 #[derive(Debug, Clone, thiserror::Error)]
@@ -91,4 +121,10 @@ pub enum AuthError {
     NotLoggedIn,
     #[error("Access token has expired")]
     Expired,
+}
+
+#[derive(Debug, thiserror::Error)]
+pub enum BusinessError {
+    #[error("The page ({page_id}) was not found in the pages the user ({user_id}) has access to")]
+    PageNotFound { page_id: String, user_id: String },
 }

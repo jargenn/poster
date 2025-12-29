@@ -19,7 +19,7 @@ time = { version = "0.3.44", features = ["formatting"] }
 tokio = { version = "1.48.0", features = ["full"] }
 tower = "0.5.2"
 tracing.workspace = true
-tower-http = { version = "0.6.8", features = ["trace"] }
+tower-http = { version = "0.6.8", features = ["normalize-path", "trace"] }
 tracing-bunyan-formatter = "0.3.10"
 tracing-subscriber = { version = "0.3.22", features = ["env-filter"] }
 tracing-tree = "0.4.1"
@@ -28,6 +28,6 @@ url.workspace = true
 serde_json.workspace = true
 serde.workspace = true
 
-facebook_graph_api = { path = "../facebook_graph_api/" }
+facebook_graph_api = { path = "../facebook_graph_api/", features = ["axum"]}
 
 

@@ -122,6 +122,28 @@ impl fmt::Display for ErrorCode {
 
 impl Error for ErrorCode {}
 
+#[cfg(feature = "axum")]
+impl From<ErrorCode> for axum::http::StatusCode {
+    fn from(value: ErrorCode) -> Self {
+        use axum::http::StatusCode;
+
+        if value.subcode.is_some() {
+            return StatusCode::UNAUTHORIZED;
+        }
+
+        match value.code.get() {
+            190 | 102 => StatusCode::UNAUTHORIZED,
+            10 | 368 => StatusCode::FORBIDDEN,
+            200..=299 => StatusCode::FORBIDDEN,
+            4 | 17 | 341 => StatusCode::TOO_MANY_REQUESTS,
+            1 | 2 | 3 => StatusCode::BAD_GATEWAY,
+            506 => StatusCode::CONFLICT,
+            1609005 => StatusCode::BAD_REQUEST,
+            _ => StatusCode::INTERNAL_SERVER_ERROR,
+        }
+    }
+}
+
 macro_rules! fb_error_codes {
     (
         $(

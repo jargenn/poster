@@ -37,17 +37,24 @@ pub async fn start_server(config: AppConfig) -> Result<()> {
     let manager = SqliteConnectionManager::file(state.config.database_path.expose_secret());
     let pool = Pool::builder().max_size(10).build(manager)?;
 
-    let router = Router::new()
-        .route("/facebook/login", get(endpoints::login::fb_login))
+    let page_api = Router::new()
         .route(
-            "/facebook/oauth/callback",
-            get(endpoints::login::fb_callback),
-        )
-        .route("/debug/session", get(debug_session))
-        .route(
-            "/page_api/page_credentials",
+            "/page_credentials",
             get(endpoints::page_api::facebooks_pages),
         )
+        .route(
+            "/page_credentials/{page_id}",
+            get(endpoints::page_api::page_credentials),
+        );
+
+    let facebook = Router::new()
+        .nest("/page_api", page_api)
+        .route("/oauth/login", get(endpoints::login::fb_login))
+        .route("/oauth/callback", get(endpoints::login::fb_callback))
+        .route("/debug/session", get(debug_session));
+
+    let router = Router::new()
+        .nest("/facebook", facebook)
         .layer(Extension(
             reqwest::ClientBuilder::new()
                 .timeout(Duration::from_secs(5))

@@ -72,7 +72,12 @@ pub async fn maintain_sessions(db_path: &str, app_id: &str, app_secret: &str) {
     .await
     .expect("Task panicked");
 
-    info!(count = sessions.len(), "sessions need verification");
+    let count = sessions.len();
+    if count == 0 {
+        info!("no sessions needed verification");
+    } else {
+        info!(count = sessions.len(), "sessions need verification");
+    }
 
     for (session_id, mut auth) in sessions {
         match auth.verify(&client, &app_id, &app_secret).await {

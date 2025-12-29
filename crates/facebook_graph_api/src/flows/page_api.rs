@@ -3,6 +3,7 @@ use serde::Deserialize;
 use serde::Serialize;
 use tracing::debug;
 
+use crate::BusinessError;
 use crate::Error;
 use crate::GraphApiError;
 
@@ -25,6 +26,8 @@ pub enum Task {
     Moderate,
     Messaging,
     CreateContent,
+    ViewMonetizationInsights,
+    ManageLeads,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -54,7 +57,7 @@ pub struct FacebookPages {
 #[derive(Debug, Serialize, Deserialize)]
 pub struct PageCredentials {
     pub page_id: String,
-    pub page_access_token: usize,
+    pub page_access_token: String,
 }
 
 pub async fn get_facebook_pages(
@@ -63,7 +66,7 @@ pub async fn get_facebook_pages(
     user_id: &str,
     user_access_token: &str,
 ) -> Result<FacebookPages, Error> {
-    tracing::info!(%user_id, "requesting page credentials");
+    tracing::info!(%user_id, "requesting pages information of the user");
 
     let endpoint = page_access_token_endpoint(version, user_id, user_access_token);
     debug!(%endpoint, "The endpoint used");
@@ -88,7 +91,31 @@ pub async fn get_facebook_pages(
         return Err(graph_error)?;
     }
 
-    let credentials = serde_json::from_str::<FacebookPages>(&text)?;
+    let pages = serde_json::from_str::<FacebookPages>(&text)?;
 
-    Ok(credentials)
+    Ok(pages)
+}
+
+pub async fn get_page_credentials(
+    client: &Client,
+    version: &str,
+    page_id: &str,
+    user_id: &str,
+    user_access_token: &str,
+) -> Result<PageCredentials, Error> {
+    tracing::info!(%user_id, "requesting page credentials");
+    let fb_pages = get_facebook_pages(&client, version, &user_id, &user_access_token).await?;
+
+    let page = fb_pages.data.into_iter().find(|page| page.id == page_id);
+
+    match page {
+        Some(p) => Ok(PageCredentials {
+            page_id: p.id,
+            page_access_token: p.access_token,
+        }),
+        None => Err(BusinessError::PageNotFound {
+            page_id: page_id.to_string(),
+            user_id: user_id.to_string(),
+        })?,
+    }
 }

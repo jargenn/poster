@@ -1,6 +1,7 @@
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use std::{
+    fmt::Debug,
     ops::Deref,
     time::{Duration, SystemTime, UNIX_EPOCH},
 };
@@ -349,8 +350,16 @@ impl Deref for CsrfToken {
 }
 
 /// The Redirect URL that facebook stores when trying to log in via OAuth and is called back
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(Serialize, Deserialize, Clone)]
 pub struct RedirectUri(Url);
+
+impl Debug for RedirectUri {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_tuple("RedirectUri")
+            .field(&self.0.as_str())
+            .finish()
+    }
+}
 
 impl Deref for RedirectUri {
     type Target = Url;
