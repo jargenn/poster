@@ -4,10 +4,10 @@ use axum::{
     http::{StatusCode, request::Parts},
 };
 use axum_extra::extract::CookieJar;
-use sqlx::SqlitePool;
+use sqlx::PgPool;
 use tracing::instrument;
 
-use crate::{cookies::SessionId, db::load_session, server::AppState};
+use crate::{cookies::SessionId, db::session::load_session, server::AppState};
 use facebook_graph_api::auth::Authorized;
 
 pub struct LoggedIn(pub Authorized);
@@ -23,7 +23,7 @@ where
     async fn from_request_parts(parts: &mut Parts, state: &S) -> Result<Self, Self::Rejection> {
         tracing::debug!("attempting LoggedIn extraction");
 
-        let pool = Extension::<SqlitePool>::from_request_parts(parts, state)
+        let pool = Extension::<PgPool>::from_request_parts(parts, state)
             .await
             .map_err(|_| {
                 tracing::error!("database pool not found in extensions");
@@ -32,11 +32,20 @@ where
 
         let cookies = CookieJar::from_request_parts(parts, state)
             .await
-            .map_err(|_| StatusCode::UNAUTHORIZED)?;
+            .map_err(|_| {
+                tracing::error!("cookie jar coulnd't be read");
+                StatusCode::UNAUTHORIZED
+            })?;
 
-        let cookie = cookies.get("session_id").ok_or(StatusCode::UNAUTHORIZED)?;
+        let cookie = cookies.get("session_id").ok_or({
+            tracing::error!("`session_id` is not in the cookie jar");
+            StatusCode::UNAUTHORIZED
+        })?;
 
-        let session_id = SessionId::parse(cookie.value()).map_err(|_| StatusCode::UNAUTHORIZED)?;
+        let session_id = SessionId::parse(cookie.value()).map_err(|_| {
+            tracing::error!("The session_id stored in the client is not a valid UUID v4");
+            StatusCode::BAD_REQUEST
+        })?;
 
         tracing::debug!(session_id = %session_id, "session cookie found");
 

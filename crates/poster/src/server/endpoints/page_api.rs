@@ -3,13 +3,17 @@ use axum::{
     extract::{Path, State},
 };
 use color_eyre::owo_colors::OwoColorize;
+use http::StatusCode;
 use reqwest::Client;
 use serde::Deserialize;
-use sqlx::SqlitePool;
+use sqlx::PgPool;
 use tracing::{error, instrument};
 
-use crate::{db::store_issued_post, error::Error, extractors::LoggedIn, server::AppState};
-use facebook_graph_api::page_api::{FacebookPages, Page, get_facebook_pages, get_page_credentials};
+use crate::{db, error::Error, extractors::LoggedIn, server::AppState};
+use facebook_graph_api::{
+    FacebookPost,
+    page_api::{FacebookPages, Page, PostData, get_facebook_pages, get_page_credentials},
+};
 
 #[instrument(skip(client, auth))]
 pub async fn facebooks_pages(
@@ -44,29 +48,99 @@ pub async fn page_credentials(
 
 #[derive(Debug, Deserialize)]
 pub(crate) struct PostPayload {
-    message: String,
+    pub content: String,
+    pub scheduled_publish_time: Option<String>,
+    pub link: Option<String>,
 }
 
-#[axum::debug_handler]
+impl TryInto<FacebookPost> for PostPayload {
+    type Error = Error;
+
+    fn try_into(self) -> Result<FacebookPost, Self::Error> {
+        Ok(FacebookPost::new(
+            self.content,
+            self.scheduled_publish_time,
+            self.link,
+        )?)
+    }
+}
+
 #[instrument(
-    "Scheduling a post in Facebook",
-    skip(client, auth, pool),
-    fields(page_id = %page_id.bold(), payload = ?payload.bold())
+    "Scheduling a list post in the database for Facebook",
+    skip( auth, pool, payload),
+    fields(page_id = %page_id.bold())
 )]
-pub async fn post_to_page(
+pub async fn schedule_multiple_posts(
     Path(page_id): Path<String>,
     State(_): State<AppState>,
-    Extension(client): Extension<Client>,
-    Extension(pool): Extension<SqlitePool>,
+    Extension(pool): Extension<PgPool>,
     LoggedIn(auth): LoggedIn,
-    Json(payload): Json<PostPayload>,
-) -> Result<Json<String>, Error> {
+    Json(payload): Json<Vec<PostPayload>>,
+) -> Result<StatusCode, Error> {
     let mut conn = pool
         .acquire()
         .await
         .expect("Couldn't get access to a connection in the pool");
 
-    let credentials = get_page_credentials(
+    let posts: Vec<FacebookPost> = payload
+        .into_iter()
+        .map(TryInto::try_into)
+        .collect::<Result<_, _>>()?;
+
+    match db::post::schedule_multiple_posts(&mut conn, &auth.user_id, &page_id, posts).await {
+        Ok(()) => Ok(StatusCode::ACCEPTED),
+        Err(err) => {
+            error!(
+                "Something bad happened while trying to store the issued post in the database: {err}"
+            );
+            Err(Error::FailToSchedulePost { page_id })
+        }
+    }
+}
+
+#[instrument(
+    "Scheduling a post in the database for Facebook",
+    skip(payload, auth, pool),
+    fields(page_id = %page_id.bold())
+)]
+pub async fn schedule_post(
+    Path(page_id): Path<String>,
+    State(_): State<AppState>,
+    Extension(pool): Extension<PgPool>,
+    LoggedIn(auth): LoggedIn,
+    Json(payload): Json<PostPayload>,
+) -> Result<StatusCode, Error> {
+    let mut conn = pool
+        .acquire()
+        .await
+        .expect("Couldn't get access to a connection in the pool");
+
+    let post = payload.try_into()?;
+
+    match db::post::schedule_post(&mut conn, &auth.user_id, &page_id, post).await {
+        Ok(()) => Ok(StatusCode::ACCEPTED),
+        Err(err) => {
+            error!(
+                "Something bad happened while trying to store the issued post in the database: {err}"
+            );
+            Err(Error::FailToSchedulePost { page_id })
+        }
+    }
+}
+
+#[axum::debug_handler]
+#[instrument(
+    "Asking for a list of page post from the Graph API"
+    skip(client),
+    fields(page_id = %page_id.bold())
+)]
+pub async fn get_page_posts(
+    Path(page_id): Path<String>,
+    State(_): State<AppState>,
+    Extension(client): Extension<Client>,
+    LoggedIn(auth): LoggedIn,
+) -> Result<Json<PostData>, Error> {
+    let page_credentials = get_page_credentials(
         &client,
         "24.0",
         &page_id,
@@ -74,23 +148,13 @@ pub async fn post_to_page(
         &auth.user_access_token,
     )
     .await?;
-
-    let post_id = facebook_graph_api::page_api::post_to_page(
-        &client,
-        "24.0",
-        &payload.message,
-        &page_id,
-        &credentials.access_token,
-    )
-    .await?;
-
-    match store_issued_post(&mut conn, &page_id, &post_id).await {
-        Ok(()) => Ok(Json(post_id)),
-        Err(err) => {
-            error!(
-                "Something bad happened while trying to store the issued post in the database: {err}"
-            );
-            Err(Error::StoreIssuedPost { page_id, post_id })
-        }
-    }
+    Ok(Json(
+        facebook_graph_api::page_api::get_page_posts(
+            &client,
+            "24.0",
+            &page_id,
+            &page_credentials.access_token,
+        )
+        .await?,
+    ))
 }

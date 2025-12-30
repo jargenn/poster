@@ -12,24 +12,25 @@ eyre = "0.6.12"
 http = "1.4.0"
 reqwest = { workspace = true, features = ["json"] }
 secrecy = { version = "0.10.3", features = ["serde"] }
-time = { version = "0.3.44", features = ["formatting"] }
+time = { version = "0.3.44", features = ["formatting", "serde"] }
 tokio = { version = "1.48.0", features = ["full"] }
 tower = "0.5.2"
 tracing.workspace = true
 tower-http = { version = "0.6.8", features = ["normalize-path", "trace"] }
 tracing-bunyan-formatter = "0.3.10"
 tracing-subscriber = { version = "0.3.22", features = ["env-filter"] }
-tracing-tree = "0.4.1"
 uuid.workspace = true
 serde.workspace = true
 
-facebook_graph_api = { path = "../facebook_graph_api/", features = ["axum"]}
+facebook_graph_api = { path = "../facebook_graph_api/", features = ["axum","time"]}
 thiserror = "2.0.17"
 serde_json.workspace = true
 sqlx = { version = "0.8", features = [
   "runtime-tokio",
   "tls-rustls-ring-webpki",
   "postgres",
-  "sqlite"
+  "time",
+  "migrate"
 ] }
+tracing-log = "0.2.0"
 

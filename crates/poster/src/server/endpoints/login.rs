@@ -4,7 +4,7 @@ use std::collections::HashMap;
 
 use crate::{
     cookies::{SessionId, build_session_cookie},
-    db::{load_session, store_session},
+    db,
     server::AppState,
 };
 use axum::{
@@ -19,7 +19,7 @@ use axum_extra::extract::{
 use facebook_graph_api::auth::{CsrfToken, OAuth};
 use reqwest::{Client, StatusCode, header};
 use secrecy::ExposeSecret;
-use sqlx::SqlitePool;
+use sqlx::PgPool;
 use tracing::{debug, error, info, instrument};
 
 #[axum::debug_handler]
@@ -27,7 +27,7 @@ use tracing::{debug, error, info, instrument};
 pub async fn fb_login(
     State(app): State<AppState>,
     cookies: CookieJar,
-    Extension(pool): Extension<SqlitePool>,
+    Extension(pool): Extension<PgPool>,
 ) -> axum::response::Response {
     if let Some(session_cookie) = cookies.get("session_id") {
         debug!(%session_cookie, "cookie jar has a session_id");
@@ -37,7 +37,7 @@ pub async fn fb_login(
                 .await
                 .expect("Couldn't get access to a connection in the pool");
 
-            if let Ok(Some(_)) = load_session(&mut conn, &session_id).await {
+            if let Ok(Some(_)) = db::session::load_session(&mut conn, &session_id).await {
                 info!("User is already logged in");
                 return (StatusCode::CONFLICT, "User is already logged in").into_response();
             }
@@ -50,14 +50,18 @@ pub async fn fb_login(
     let (redirect_url, csrf_token) = start_auth.redirect(app.config.fb_config_id.expose_secret());
     let redirect = Redirect::temporary(redirect_url.as_str());
 
-    // TODO: Work on this later
-    const IS_COOKIE_SECURE: bool = false;
-    #[cfg(not(debug_assertions))]
-    const _: () = assert!(IS_COOKIE_SECURE, "Cookies must be secure in release builds");
-
     let csrf_cookie = Cookie::build(("fb_oauth_csrf", csrf_token.to_string()))
         .http_only(true)
-        .secure(IS_COOKIE_SECURE)
+        .secure({
+            #[cfg(debug_assertions)]
+            {
+                false
+            }
+            #[cfg(not(debug_assertions))]
+            {
+                true
+            }
+        })
         .same_site(SameSite::Lax)
         .path("/")
         .build();
@@ -81,7 +85,7 @@ pub async fn fb_login(
 pub async fn fb_callback(
     State(app): State<AppState>,
     Extension(client): Extension<Client>,
-    Extension(pool): Extension<SqlitePool>,
+    Extension(pool): Extension<PgPool>,
     cookies: axum_extra::extract::CookieJar,
     Query(params): Query<HashMap<String, String>>,
 ) -> impl IntoResponse {
@@ -108,9 +112,8 @@ pub async fn fb_callback(
         None => return (StatusCode::BAD_REQUEST, cookies, "Missing code"),
     };
 
-    let returned_state = match params.get("state") {
-        Some(s) => s,
-        None => return (StatusCode::BAD_REQUEST, cookies, "Missing state"),
+    let Some(returned_state) = params.get("state") else {
+        return (StatusCode::BAD_REQUEST, cookies, "Missing state");
     };
 
     let stored_csrf = match cookies.get("fb_oauth_csrf") {
@@ -163,11 +166,11 @@ pub async fn fb_callback(
 
     let session_id = SessionId::new();
 
-    store_session(&mut conn, &session_id, &auth_token.state)
+    db::session::store_session(&mut conn, &session_id, &auth_token.state)
         .await
         .expect("Some error happened while storing the session id in the cookies");
 
-    let cookies = cookies.add(build_session_cookie(session_id));
+    let cookies = cookies.add(build_session_cookie(&session_id));
 
     tracing::info!(
         user_id = %auth_token.state.user_id,

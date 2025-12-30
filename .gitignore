@@ -5,3 +5,5 @@
 *.json
 *.csv
 /configuration
+/cartero
+*.bunyan

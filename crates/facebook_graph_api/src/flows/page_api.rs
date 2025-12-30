@@ -16,7 +16,7 @@ fn page_access_token_endpoint(version: &str, user_id: &str, user_access_token: &
     .to_string()
 }
 
-fn post_to_page_endpoint(version: &str, page_id: &str) -> String {
+fn feed_endpoint(version: &str, page_id: &str) -> String {
     url::Url::parse(&format!(
         "https://graph.facebook.com/v{version}/{page_id}/feed"
     ))
@@ -77,7 +77,7 @@ pub async fn get_facebook_pages(
     let status = res.status();
 
     let text = res.text().await?;
-    debug!("{}", text);
+    debug!(body = text, "Response Body");
 
     if !status.is_success() {
         let graph_error = GraphApiError::from_response_body(&text)?;
@@ -125,7 +125,7 @@ pub async fn post_to_page(
     page_id: &str,
     page_access_token: &str,
 ) -> Result<String, Error> {
-    let endpoint = post_to_page_endpoint(version, page_id);
+    let endpoint = feed_endpoint(version, page_id);
     debug!(%endpoint, "The endpoint used");
 
     let payload = json!({
@@ -158,4 +158,43 @@ pub async fn post_to_page(
     let post_id = serde_json::from_str::<PostSuccess>(&text)?;
 
     Ok(post_id.id)
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+pub struct PostData {
+    pub created_time: String,
+    pub message: String,
+    #[serde(rename = "id")]
+    pub page_post_id: String,
+}
+
+pub async fn get_page_posts(
+    client: &Client,
+    version: &str,
+    page_id: &str,
+    page_access_token: &str,
+) -> Result<PostData, Error> {
+    let endpoint = format!(
+        "{}?access_token={page_access_token}",
+        feed_endpoint(version, page_id)
+    );
+    debug!(%endpoint, "The endpoint used");
+
+    let res = client.get(endpoint).send().await?;
+
+    let status = res.status();
+    let text = res.text().await?;
+    debug!(body = text, "Response Body");
+
+    if !status.is_success() {
+        let graph_error = GraphApiError::from_response_body(&text)?;
+        tracing::warn!(
+            %page_id,
+            "facebook rejected request"
+        );
+
+        return Err(graph_error)?;
+    }
+
+    Ok(serde_json::from_str::<PostData>(&text)?)
 }

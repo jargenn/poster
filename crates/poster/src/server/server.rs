@@ -4,8 +4,7 @@ use axum::Router;
 use axum::routing::post;
 use axum::{Extension, body::Body, http, routing::get};
 use eyre::Result;
-use secrecy::ExposeSecret;
-use sqlx::sqlite::SqlitePoolOptions;
+use sqlx::postgres::PgPoolOptions;
 use tokio::net::TcpListener;
 use tower::ServiceBuilder;
 use tower_http::LatencyUnit;
@@ -35,12 +34,17 @@ pub async fn start_server(config: AppConfig) -> Result<()> {
     let url = listener.local_addr()?;
 
     let state = AppState::new(config.clone());
-    let pool = SqlitePoolOptions::new()
+    let pool = PgPoolOptions::new()
         .max_connections(10)
-        .connect_lazy(config.database_path.expose_secret())?;
+        .acquire_timeout(Duration::from_secs(2))
+        .connect_lazy(&config.database.connection_string())?;
 
     let page_api = Router::new()
-        .route("/feed/{page_id}", post(endpoints::page_api::post_to_page))
+        .route("/feed/{page_id}", post(endpoints::page_api::schedule_post))
+        .route(
+            "/feed/{page_id}/batch",
+            post(endpoints::page_api::schedule_multiple_posts),
+        )
         .route(
             "/page_credentials",
             get(endpoints::page_api::facebooks_pages),
@@ -48,6 +52,10 @@ pub async fn start_server(config: AppConfig) -> Result<()> {
         .route(
             "/page_credentials/{page_id}",
             get(endpoints::page_api::page_credentials),
+        )
+        .route(
+            "/page_posts/{page_id}",
+            get(endpoints::page_api::get_page_posts),
         );
 
     let facebook = Router::new()
@@ -58,6 +66,7 @@ pub async fn start_server(config: AppConfig) -> Result<()> {
 
     let router = Router::new()
         .nest("/facebook", facebook)
+        .route("/health", get(endpoints::health::health_check))
         .layer(Extension(
             reqwest::ClientBuilder::new()
                 .timeout(Duration::from_secs(5))

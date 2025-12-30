@@ -56,7 +56,7 @@ async fn facebook_v24_0_me_190() {
     let err = &body["error"];
 
     let code = err["code"].as_u64().unwrap() as u32;
-    let subcode = err["error_subcode"].as_u64().unwrap() as u16;
+    let subcode = err["error_subcode"].as_u64().unwrap() as u32;
 
     let status = ErrorCode::from_parts(code, Some(subcode)).expect("invalid fb status code");
 

@@ -10,9 +10,9 @@ pub enum Error {
     #[error(transparent)]
     Facebook(#[from] facebook_graph_api::Error),
     #[error(
-        "An error ocurred while trying to store issued post ({post_id}) for the page ({page_id} in the database."
+        "An error ocurred while trying to schedule a post for the page ({page_id}) in the database."
     )]
-    StoreIssuedPost { page_id: String, post_id: String },
+    FailToSchedulePost { page_id: String },
     #[error("Network error: {0}")]
     Reqwest(#[from] reqwest::Error),
     #[error("JSON error: {0}")]
@@ -42,7 +42,7 @@ impl IntoResponse for Error {
                     .into_response()
             }
 
-            Error::StoreIssuedPost { .. } => {
+            Error::FailToSchedulePost { .. } => {
                 tracing::error!(error = %self, "internal application error");
                 (
                     StatusCode::INTERNAL_SERVER_ERROR,

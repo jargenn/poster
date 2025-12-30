@@ -11,7 +11,7 @@ use axum::{
 #[cfg(feature = "axum")]
 use serde_json::json;
 
-use crate::ErrorCode;
+use crate::{ErrorCode, PostError};
 
 #[derive(Debug, thiserror::Error)]
 #[error("Facebook client code")]
@@ -27,38 +27,64 @@ pub enum Error {
     Json(#[from] serde_json::Error),
     #[error("The page ({page_id}) was not found in the pages the user ({user_id}) has access to")]
     PageNotFound { page_id: String, user_id: String },
+    #[error(transparent)]
+    PostError(#[from] PostError),
 }
 
 #[cfg(feature = "axum")]
 impl IntoResponse for Error {
     fn into_response(self) -> Response {
-        let (status, message) = match &self {
+        match self {
+            Error::PostError(post_error) => {
+                // now post_error: PostError (owned)
+                post_error.into_response()
+            }
+
             Error::Auth(err) => {
                 tracing::warn!(error = %err, "authentication failed");
-                (StatusCode::UNAUTHORIZED, err.to_string())
+                (
+                    StatusCode::UNAUTHORIZED,
+                    Json(json!({ "error": err.to_string() })),
+                )
+                    .into_response()
             }
+
             Error::GraphApi(err) => {
                 tracing::error!(error = %err, code = %err.code, "facebook graph api error");
-                (err.code.into(), err.to_string())
+                (
+                    StatusCode::from(err.code),
+                    Json(json!({ "error": err.to_string() })),
+                )
+                    .into_response()
             }
+
             Error::Reqwest(err) => {
                 tracing::error!(error = %err, "upstream service error");
-                (StatusCode::BAD_GATEWAY, "Upstream service error".into())
+                (
+                    StatusCode::BAD_GATEWAY,
+                    Json(json!({ "error": "Upstream service error" })),
+                )
+                    .into_response()
             }
+
             Error::PageNotFound { .. } => {
                 tracing::warn!(error = %self);
-                (StatusCode::UNPROCESSABLE_ENTITY, self.to_string())
+                (
+                    StatusCode::UNPROCESSABLE_ENTITY,
+                    Json(json!({ "error": self.to_string() })),
+                )
+                    .into_response()
             }
+
             Error::Json(err) => {
                 tracing::warn!(error = %err, "invalid json payload");
-                (StatusCode::BAD_REQUEST, "Invalid JSON payload".into())
+                (
+                    StatusCode::BAD_REQUEST,
+                    Json(json!({ "error": "Invalid JSON payload" })),
+                )
+                    .into_response()
             }
-        };
-
-        let body = Json(json!({
-            "error": message,
-        }));
-        (status, body).into_response()
+        }
     }
 }
 
@@ -82,7 +108,8 @@ impl GraphApiError {
         let data = response.error;
 
         let code = ErrorCode {
-            code: NonZeroU32::new(data.code).unwrap_or(NonZeroU32::new(1).unwrap()),
+            code: NonZeroU32::new(data.code)
+                .unwrap_or(NonZeroU32::new(1).expect("Couldn't get a NonZeroU32 from 1")),
             subcode: data.error_subcode.and_then(NonZeroU32::new),
         };
 
@@ -126,7 +153,7 @@ struct GraphApiErrorData {
     error_subcode: Option<u32>,
     error_user_title: Option<String>,
     error_user_msg: Option<String>,
-    #[serde(rename = "fb_trace_id")]
+    #[serde(rename = "fbtrace_id")]
     trace_id: String,
 }
 

@@ -12,7 +12,7 @@ use std::{
 /// As Facebook errors are identified by **both** _code_ and _subcode_, one needs both to
 /// represent a status, where it is said subcode could be missing from responses.
 ///
-/// Read more: https://developers.facebook.com/docs/graph-api/guides/error-handling?locale=en_US#errorcodes
+/// Read more: `<https://developers.facebook.com/docs/graph-api/guides/error-handling?locale=en_US#errorcodes>`
 ///
 /// # Examples
 /// ```
@@ -26,27 +26,25 @@ pub struct ErrorCode {
     pub code: NonZeroU32,
     pub subcode: Option<NonZeroU32>,
 }
+
 /// A possible error value when converting a `ErrorCode` from a parts.
-///
 pub struct InvalidErrorCode {
     _priv: (),
 }
 
 impl ErrorCode {
-    /// This functions validates the correctness of the supplied subcode. The ErrorCodes defined in
+    /// This functions validates the correctness of the supplied subcode. The `ErrorCodes` defined in
     /// the facebook docs don't have strong invariants so the correctness check is loosed.
     pub const fn from_parts(
         code: u32,
         subcode: Option<u32>,
     ) -> Result<ErrorCode, InvalidErrorCode> {
-        let code = match NonZeroU32::new(code) {
-            Some(c) => c,
-            None => return Err(InvalidErrorCode::new()),
+        let Some(code) = NonZeroU32::new(code) else {
+            return Err(InvalidErrorCode::new());
         };
 
         let subcode = match subcode {
-            None => None,
-            Some(0) => None,
+            None | Some(0) => None,
             Some(v) => match NonZeroU32::new(v) {
                 Some(v) => Some(v),
                 None => return Err(InvalidErrorCode::new()),
@@ -58,7 +56,10 @@ impl ErrorCode {
 
     /// Returns (code, subcode) where subcode will be 0 if not present.
     pub fn as_parts(&self) -> (u32, u32) {
-        (self.code.get(), self.subcode.map(|v| v.get()).unwrap_or(0))
+        (
+            self.code.get(),
+            self.subcode.map_or(0, std::num::NonZero::get),
+        )
     }
 
     pub fn canonical_reason(&self) -> Option<&'static str> {
@@ -72,7 +73,7 @@ impl fmt::Debug for ErrorCode {
             f,
             "ErrorCode({}, {:?})",
             self.code.get(),
-            self.subcode.map(|v| v.get())
+            self.subcode.map(std::num::NonZero::get)
         )
     }
 }
@@ -129,12 +130,12 @@ impl From<ErrorCode> for axum::http::StatusCode {
 
         if let Some(subcode) = value.subcode {
             return match (value.code.get(), subcode.get()) {
+                (200, 2_069_030 | 2_069_031 | 2_069_033) => StatusCode::NOT_IMPLEMENTED,
+                (1, 2_853_006) => StatusCode::FORBIDDEN,
                 // Authentication/token subcodes
-                (190, 458..=464 | 467 | 492) => StatusCode::UNAUTHORIZED,
+                (190, 458..=464 | 467 | 492) |
                 // New Pages Experience subcodes
-                (190, 2069032) => StatusCode::UNAUTHORIZED,
-                (200, 2069030 | 2069031 | 2069033) => StatusCode::NOT_IMPLEMENTED,
-                (1, 2853006) => StatusCode::FORBIDDEN,
+                (190, 2_069_032) |
                 // Default for other subcodes
                 _ => StatusCode::UNAUTHORIZED,
             };
@@ -143,9 +144,14 @@ impl From<ErrorCode> for axum::http::StatusCode {
         match value.code.get() {
             // Authentication errors
             190 | 102 => StatusCode::UNAUTHORIZED,
+            // Insights errors (mostly client-side issues)
+            2_932_010 => StatusCode::SERVICE_UNAVAILABLE,
+            2_932_006 | 2_932_007 | 2_932_009 => StatusCode::NOT_IMPLEMENTED,
+            2_932_001 | 2_932_003 | 2_932_004 | 2_932_005 |
             // Permission errors
-            10 | 368 => StatusCode::FORBIDDEN,
-            200..=299 => StatusCode::FORBIDDEN,
+            10 | 368 |
+            // other
+            2_874_008 |  200..=299 => StatusCode::FORBIDDEN,
             // Rate limiting errors
             4 | 17 | 341 => StatusCode::TOO_MANY_REQUESTS,
             // Service/infrastructure errors
@@ -153,15 +159,10 @@ impl From<ErrorCode> for axum::http::StatusCode {
             // Conflict errors
             506 => StatusCode::CONFLICT,
             // Client errors
-            1609005 => StatusCode::BAD_REQUEST,
+            1_609_005 => StatusCode::BAD_REQUEST,
             // New Pages Experience errors
-            1713216 => StatusCode::BAD_REQUEST,
-            2446158 => StatusCode::NOT_IMPLEMENTED,
-            2874008 => StatusCode::FORBIDDEN,
-            // Insights errors (mostly client-side issues)
-            2932001 | 2932003 | 2932004 | 2932005 => StatusCode::FORBIDDEN,
-            2932006 | 2932007 | 2932009 => StatusCode::NOT_IMPLEMENTED,
-            2932010 => StatusCode::SERVICE_UNAVAILABLE,
+            1_713_216 => StatusCode::BAD_REQUEST,
+            2_446_158 => StatusCode::NOT_IMPLEMENTED,
             // Unknown errors
             _ => StatusCode::INTERNAL_SERVER_ERROR,
         }
@@ -230,7 +231,7 @@ fb_error_codes! {
     /// Duplicate Post
     (506, 0, DUPLICATE_POST, "Duplicate posts cannot be published consecutively");
     /// Error Posting Link
-    (1609005, 0, ERROR_POSTING_LINK, "Problem scraping data from the provided link. Check the URL");
+    (1_609_005, 0, ERROR_POSTING_LINK, "Problem scraping data from the provided link. Check the URL");
 
     /// App Not Installed
     (190, 458, APP_NOT_INSTALLED, "The user has not logged into your app. Reauthenticate the user");
@@ -248,37 +249,37 @@ fb_error_codes! {
     // PAGES API
 
     /// Video not associated with Page
-     (1713216, 0, VIDEO_NOT_ASSOCIATED_WITH_PAGE, "Video must be associated with a Page to create a video engagement Custom Audience");
+     (1_713_216, 0, VIDEO_NOT_ASSOCIATED_WITH_PAGE, "Video must be associated with a Page to create a video engagement Custom Audience");
     /// Endpoint not supported in New Pages Experience
-    (200, 2069030, NPE_ENDPOINT_NOT_SUPPORTED, "This endpoint is not supported in the New Pages Experience");
+    (200, 2_069_030, NPE_ENDPOINT_NOT_SUPPORTED, "This endpoint is not supported in the New Pages Experience");
     /// Field not supported in New Pages Experience
-    (200, 2069031, NPE_FIELD_NOT_SUPPORTED, "This field is not supported in the New Pages Experience");
+    (200, 2_069_031, NPE_FIELD_NOT_SUPPORTED, "This field is not supported in the New Pages Experience");
     /// Page access token required for New Pages Experience
-    (190, 2069032, NPE_PAGE_TOKEN_REQUIRED, "A Page access token is required for this call in the New Pages Experience");
+    (190, 2_069_032, NPE_PAGE_TOKEN_REQUIRED, "A Page access token is required for this call in the New Pages Experience");
     /// Feature deprecated or unavailable in New Pages Experience
-    (200, 2069033, NPE_FEATURE_UNAVAILABLE, "The corresponding UI feature is deprecated or not available in New Pages Experience");
+    (200, 2_069_033, NPE_FEATURE_UNAVAILABLE, "The corresponding UI feature is deprecated or not available in New Pages Experience");
     /// Ad objective not supported for New Pages Experience
-    (2446158, 0, NPE_AD_OBJECTIVE_NOT_SUPPORTED, "This ad objective is not supported for New Pages Experience");
+    (2_446_158, 0, NPE_AD_OBJECTIVE_NOT_SUPPORTED, "This ad objective is not supported for New Pages Experience");
     /// Viewer lacks permission
-    (1, 2853006, VIEWER_NO_PERMISSION, "Viewer doesn't have permission to perform this action. Contact a Page admin");
+    (1, 2_853_006, VIEWER_NO_PERMISSION, "Viewer doesn't have permission to perform this action. Contact a Page admin");
     /// Insufficient followers for insights
-    (2874008, 0, INSIGHTS_INSUFFICIENT_FOLLOWERS, "Page insights are only available for Pages with at least 100 followers");
+    (2_874_008, 0, INSIGHTS_INSUFFICIENT_FOLLOWERS, "Page insights are only available for Pages with at least 100 followers");
     /// Post must be public for insights
-    (2932001, 0, INSIGHTS_POST_NOT_PUBLIC, "Post must be set to public to access insights");
+    (2_932_001, 0, INSIGHTS_POST_NOT_PUBLIC, "Post must be set to public to access insights");
     /// Insights only available on original post
-    (2932003, 0, INSIGHTS_SHARED_POST_RESTRICTION, "Insights only available on the original post if you own it");
+    (2_932_003, 0, INSIGHTS_SHARED_POST_RESTRICTION, "Insights only available on the original post if you own it");
     /// Must be post creator for insights
-    (2932004, 0, INSIGHTS_NOT_POST_CREATOR, "You must be the creator of the post to access insights");
+    (2_932_004, 0, INSIGHTS_NOT_POST_CREATOR, "You must be the creator of the post to access insights");
     /// Tagged post insights requires ownership
-    (2932005, 0, INSIGHTS_TAGGED_POST_RESTRICTION, "You must be the creator of the post to access insights, even if tagged");
+    (2_932_005, 0, INSIGHTS_TAGGED_POST_RESTRICTION, "You must be the creator of the post to access insights, even if tagged");
     /// Profile picture insights not available
-    (2932006, 0, INSIGHTS_PROFILE_PICTURE_UNSUPPORTED, "Insights not available for profile picture changes. Create a new post instead");
+    (2_932_006, 0, INSIGHTS_PROFILE_PICTURE_UNSUPPORTED, "Insights not available for profile picture changes. Create a new post instead");
     /// Cover photo insights not available
-    (2932007, 0, INSIGHTS_COVER_PHOTO_UNSUPPORTED, "Insights not available for cover photo changes. Create a new post instead");
+    (2_932_007, 0, INSIGHTS_COVER_PHOTO_UNSUPPORTED, "Insights not available for cover photo changes. Create a new post instead");
     /// Live video insights not available
-    (2932009, 0, INSIGHTS_LIVE_VIDEO_UNSUPPORTED, "Insights or boosting not supported for live videos");
+    (2_932_009, 0, INSIGHTS_LIVE_VIDEO_UNSUPPORTED, "Insights or boosting not supported for live videos");
     /// Insights temporarily unavailable
-    (2932010, 0, INSIGHTS_UNAVAILABLE, "Insights are not available for this post right now");
+    (2_932_010, 0, INSIGHTS_UNAVAILABLE, "Insights are not available for this post right now");
 }
 
 impl InvalidErrorCode {

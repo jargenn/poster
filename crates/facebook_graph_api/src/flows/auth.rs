@@ -75,7 +75,7 @@ impl OAuth<TokenIssued> {
         expected_app_id: &str,
         app_secret: &str,
     ) -> Result<OAuth<Authorized>, Error> {
-        let app_access_token = format!("{}|{}", expected_app_id, app_secret);
+        let app_access_token = format!("{expected_app_id}|{app_secret}");
 
         let debug_endpoint = Url::parse_with_params(
             "https://graph.facebook.com/v24.0/debug_token",
@@ -167,7 +167,7 @@ impl Authorized {
         app_id: &str,
         app_secret: &str,
     ) -> Result<(), Error> {
-        let app_access_token = format!("{}|{}", app_id, app_secret);
+        let app_access_token = format!("{app_id}|{app_secret}");
 
         let debug_endpoint = Url::parse_with_params(
             "https://graph.facebook.com/v24.0/debug_token",
