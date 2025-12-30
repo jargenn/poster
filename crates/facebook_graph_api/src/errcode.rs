@@ -1,7 +1,7 @@
 use std::{
     error::Error,
     fmt::{self},
-    num::{NonZeroU16, NonZeroU32},
+    num::NonZeroU32,
 };
 /// An implementation of the errors in the Graph API.
 /// Where they are represented by a combination of a _code_ _sub-code_ pairing.
@@ -24,7 +24,7 @@ use std::{
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct ErrorCode {
     pub code: NonZeroU32,
-    pub subcode: Option<NonZeroU16>,
+    pub subcode: Option<NonZeroU32>,
 }
 /// A possible error value when converting a `ErrorCode` from a parts.
 ///
@@ -37,7 +37,7 @@ impl ErrorCode {
     /// the facebook docs don't have strong invariants so the correctness check is loosed.
     pub const fn from_parts(
         code: u32,
-        subcode: Option<u16>,
+        subcode: Option<u32>,
     ) -> Result<ErrorCode, InvalidErrorCode> {
         let code = match NonZeroU32::new(code) {
             Some(c) => c,
@@ -47,7 +47,7 @@ impl ErrorCode {
         let subcode = match subcode {
             None => None,
             Some(0) => None,
-            Some(v) => match NonZeroU16::new(v) {
+            Some(v) => match NonZeroU32::new(v) {
                 Some(v) => Some(v),
                 None => return Err(InvalidErrorCode::new()),
             },
@@ -57,12 +57,12 @@ impl ErrorCode {
     }
 
     /// Returns (code, subcode) where subcode will be 0 if not present.
-    pub fn as_parts(&self) -> (u32, u16) {
+    pub fn as_parts(&self) -> (u32, u32) {
         (self.code.get(), self.subcode.map(|v| v.get()).unwrap_or(0))
     }
 
     pub fn canonical_reason(&self) -> Option<&'static str> {
-        canonical_reason(self.code.into(), self.subcode.map(NonZeroU16::get))
+        canonical_reason(self.code.into(), self.subcode.map(NonZeroU32::get))
     }
 }
 
@@ -77,22 +77,22 @@ impl fmt::Debug for ErrorCode {
     }
 }
 
-impl PartialEq<ErrorCode> for (u32, u16) {
+impl PartialEq<ErrorCode> for (u32, u32) {
     fn eq(&self, other: &ErrorCode) -> bool {
         *self == other.as_parts()
     }
 }
 
-impl PartialEq<(u32, u16)> for ErrorCode {
-    fn eq(&self, other: &(u32, u16)) -> bool {
+impl PartialEq<(u32, u32)> for ErrorCode {
+    fn eq(&self, other: &(u32, u32)) -> bool {
         self.as_parts() == *other
     }
 }
 
-impl TryFrom<(u32, u16)> for ErrorCode {
+impl TryFrom<(u32, u32)> for ErrorCode {
     type Error = InvalidErrorCode;
 
-    fn try_from(t: (u32, u16)) -> Result<Self, Self::Error> {
+    fn try_from(t: (u32, u32)) -> Result<Self, Self::Error> {
         let subcode = match t.1 {
             0 => None,
             v => Some(v),
@@ -127,18 +127,42 @@ impl From<ErrorCode> for axum::http::StatusCode {
     fn from(value: ErrorCode) -> Self {
         use axum::http::StatusCode;
 
-        if value.subcode.is_some() {
-            return StatusCode::UNAUTHORIZED;
+        if let Some(subcode) = value.subcode {
+            return match (value.code.get(), subcode.get()) {
+                // Authentication/token subcodes
+                (190, 458..=464 | 467 | 492) => StatusCode::UNAUTHORIZED,
+                // New Pages Experience subcodes
+                (190, 2069032) => StatusCode::UNAUTHORIZED,
+                (200, 2069030 | 2069031 | 2069033) => StatusCode::NOT_IMPLEMENTED,
+                (1, 2853006) => StatusCode::FORBIDDEN,
+                // Default for other subcodes
+                _ => StatusCode::UNAUTHORIZED,
+            };
         }
 
         match value.code.get() {
+            // Authentication errors
             190 | 102 => StatusCode::UNAUTHORIZED,
+            // Permission errors
             10 | 368 => StatusCode::FORBIDDEN,
             200..=299 => StatusCode::FORBIDDEN,
+            // Rate limiting errors
             4 | 17 | 341 => StatusCode::TOO_MANY_REQUESTS,
+            // Service/infrastructure errors
             1..=3 => StatusCode::BAD_GATEWAY,
+            // Conflict errors
             506 => StatusCode::CONFLICT,
+            // Client errors
             1609005 => StatusCode::BAD_REQUEST,
+            // New Pages Experience errors
+            1713216 => StatusCode::BAD_REQUEST,
+            2446158 => StatusCode::NOT_IMPLEMENTED,
+            2874008 => StatusCode::FORBIDDEN,
+            // Insights errors (mostly client-side issues)
+            2932001 | 2932003 | 2932004 | 2932005 => StatusCode::FORBIDDEN,
+            2932006 | 2932007 | 2932009 => StatusCode::NOT_IMPLEMENTED,
+            2932010 => StatusCode::SERVICE_UNAVAILABLE,
+            // Unknown errors
             _ => StatusCode::INTERNAL_SERVER_ERROR,
         }
     }
@@ -158,14 +182,14 @@ macro_rules! fb_error_codes {
                 code: unsafe { NonZeroU32::new_unchecked($code)},
                 subcode: match $subcode {
                     0 => None,
-                    v => Some(unsafe {NonZeroU16::new_unchecked(v)}),
+                    v => Some(unsafe {NonZeroU32::new_unchecked(v)}),
                 }
             };
         )+
 
         }
 
-        fn canonical_reason(code: u32, subcode: Option<u16>) -> Option<&'static str> {
+        fn canonical_reason(code: u32, subcode: Option<u32>) -> Option<&'static str> {
             match (code, subcode) {
                 $(
                     ($code, None) if $subcode == 0 => Some($phrase),
@@ -220,6 +244,41 @@ fb_error_codes! {
     (190, 464, UNCONFIRMED_USER, "User needs to log in at Facebook to correct an issue");
     /// Invalid Session
     (190, 492, INVALID_SESSION, "User associated with the Page access token does not have an appropriate role");
+
+    // PAGES API
+
+    /// Video not associated with Page
+     (1713216, 0, VIDEO_NOT_ASSOCIATED_WITH_PAGE, "Video must be associated with a Page to create a video engagement Custom Audience");
+    /// Endpoint not supported in New Pages Experience
+    (200, 2069030, NPE_ENDPOINT_NOT_SUPPORTED, "This endpoint is not supported in the New Pages Experience");
+    /// Field not supported in New Pages Experience
+    (200, 2069031, NPE_FIELD_NOT_SUPPORTED, "This field is not supported in the New Pages Experience");
+    /// Page access token required for New Pages Experience
+    (190, 2069032, NPE_PAGE_TOKEN_REQUIRED, "A Page access token is required for this call in the New Pages Experience");
+    /// Feature deprecated or unavailable in New Pages Experience
+    (200, 2069033, NPE_FEATURE_UNAVAILABLE, "The corresponding UI feature is deprecated or not available in New Pages Experience");
+    /// Ad objective not supported for New Pages Experience
+    (2446158, 0, NPE_AD_OBJECTIVE_NOT_SUPPORTED, "This ad objective is not supported for New Pages Experience");
+    /// Viewer lacks permission
+    (1, 2853006, VIEWER_NO_PERMISSION, "Viewer doesn't have permission to perform this action. Contact a Page admin");
+    /// Insufficient followers for insights
+    (2874008, 0, INSIGHTS_INSUFFICIENT_FOLLOWERS, "Page insights are only available for Pages with at least 100 followers");
+    /// Post must be public for insights
+    (2932001, 0, INSIGHTS_POST_NOT_PUBLIC, "Post must be set to public to access insights");
+    /// Insights only available on original post
+    (2932003, 0, INSIGHTS_SHARED_POST_RESTRICTION, "Insights only available on the original post if you own it");
+    /// Must be post creator for insights
+    (2932004, 0, INSIGHTS_NOT_POST_CREATOR, "You must be the creator of the post to access insights");
+    /// Tagged post insights requires ownership
+    (2932005, 0, INSIGHTS_TAGGED_POST_RESTRICTION, "You must be the creator of the post to access insights, even if tagged");
+    /// Profile picture insights not available
+    (2932006, 0, INSIGHTS_PROFILE_PICTURE_UNSUPPORTED, "Insights not available for profile picture changes. Create a new post instead");
+    /// Cover photo insights not available
+    (2932007, 0, INSIGHTS_COVER_PHOTO_UNSUPPORTED, "Insights not available for cover photo changes. Create a new post instead");
+    /// Live video insights not available
+    (2932009, 0, INSIGHTS_LIVE_VIDEO_UNSUPPORTED, "Insights or boosting not supported for live videos");
+    /// Insights temporarily unavailable
+    (2932010, 0, INSIGHTS_UNAVAILABLE, "Insights are not available for this post right now");
 }
 
 impl InvalidErrorCode {

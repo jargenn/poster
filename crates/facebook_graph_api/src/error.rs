@@ -1,4 +1,4 @@
-use std::num::{NonZeroU16, NonZeroU32};
+use std::num::NonZeroU32;
 
 use serde::Deserialize;
 
@@ -63,8 +63,11 @@ impl IntoResponse for Error {
 }
 
 #[derive(Debug, Clone, thiserror::Error)]
-#[error("{code}:{error_type} (trace id: {trace_id})")]
+#[error(
+    "Graph API Error\n  Code: {code}\n  Type: {error_type}\n  Reason: {}\n  Details: {help_message}\n  Trace: {trace_id}", code.canonical_reason().unwrap_or("Unknown reason")
+)]
 pub struct GraphApiError {
+    pub help_message: String,
     pub error_type: String,
     pub code: ErrorCode,
     pub user_title: Option<String>,
@@ -80,7 +83,7 @@ impl GraphApiError {
 
         let code = ErrorCode {
             code: NonZeroU32::new(data.code).unwrap_or(NonZeroU32::new(1).unwrap()),
-            subcode: data.error_subcode.and_then(NonZeroU16::new),
+            subcode: data.error_subcode.and_then(NonZeroU32::new),
         };
 
         // Assert that Facebook's message matches our canonical representation
@@ -99,6 +102,7 @@ impl GraphApiError {
         }
 
         Ok(GraphApiError {
+            help_message: data.message,
             error_type: data.error_type,
             code,
             user_title: data.error_user_title,
@@ -119,7 +123,7 @@ struct GraphApiErrorData {
     #[serde(rename = "type")]
     error_type: String,
     code: u32,
-    error_subcode: Option<u16>,
+    error_subcode: Option<u32>,
     error_user_title: Option<String>,
     error_user_msg: Option<String>,
     #[serde(rename = "fb_trace_id")]
