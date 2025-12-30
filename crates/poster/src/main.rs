@@ -14,8 +14,7 @@ async fn main() -> Result<()> {
     color_eyre::install()?;
     telemetry::init_tracing();
 
-    let config_file = std::env::var("CONFIG_FILE").unwrap_or_else(|_| "config".to_owned());
-    let config = AppConfig::from_config(config_file.into())?;
+    let config = AppConfig::get_config()?;
     dbg!(&config);
 
     let db_path = config.database_path.clone();

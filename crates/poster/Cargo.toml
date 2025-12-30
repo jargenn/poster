@@ -6,7 +6,6 @@ version.workspace = true
 [dependencies]
 axum = { version = "0.8.8", features = ["macros"] }
 axum-extra = { version = "0.12.3", features = ["cookie"] }
-camino = { version = "1.2.2", features = ["serde1"] }
 color-eyre = "0.6.5"
 config = "0.15.19"
 eyre = "0.6.12"
@@ -33,5 +32,4 @@ sqlx = { version = "0.8", features = [
   "postgres",
   "sqlite"
 ] }
-dotenvy = "0.15.7"
 

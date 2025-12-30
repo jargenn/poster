@@ -1,4 +1,4 @@
-use camino::Utf8PathBuf;
+use config::Environment;
 use eyre::Result;
 use secrecy::SecretString;
 use serde::Deserialize;
@@ -17,9 +17,15 @@ pub struct AppConfig {
 }
 
 impl AppConfig {
-    pub fn from_config(config_file: Utf8PathBuf) -> Result<Self> {
+    pub fn get_config() -> Result<Self> {
+        let base_path = std::env::current_dir().expect("Failed to determine current directory");
+        let config_dir = base_path.join("configuration");
+        let env = std::env::var("APP_ENVIRONMENT").unwrap_or_else(|_| "local".into());
+
         let settings = config::Config::builder()
-            .add_source(config::File::from(config_file.as_std_path()).required(true))
+            .add_source(config::File::from(config_dir.join("base")).required(true))
+            .add_source(config::File::from(config_dir.join(env.as_str())).required(true))
+            .add_source(config::Environment::with_prefix("app").separator("__"))
             .build()?;
 
         Ok(settings.try_deserialize()?)

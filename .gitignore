@@ -4,3 +4,4 @@
 *.yaml
 *.json
 *.csv
+/configuration
