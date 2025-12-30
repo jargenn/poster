@@ -4,6 +4,7 @@ pub mod cookies;
 pub use app_config::*;
 pub mod db;
 pub mod debug;
+pub mod error;
 pub mod extractors;
 pub mod server;
 pub mod telemetry;

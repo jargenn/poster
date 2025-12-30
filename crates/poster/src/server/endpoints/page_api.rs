@@ -9,11 +9,8 @@ use reqwest::Client;
 use serde::Deserialize;
 use tracing::{error, instrument};
 
-use crate::{db::store_issued_post, extractors::LoggedIn, server::AppState};
-use facebook_graph_api::{
-    AppError, Error,
-    page_api::{FacebookPages, Page, get_facebook_pages, get_page_credentials},
-};
+use crate::{db::store_issued_post, error::Error, extractors::LoggedIn, server::AppState};
+use facebook_graph_api::page_api::{FacebookPages, Page, get_facebook_pages, get_page_credentials};
 
 #[instrument(skip(client, auth))]
 pub async fn facebooks_pages(
@@ -93,7 +90,7 @@ pub async fn post_to_page(
             error!(
                 "Something bad happened while trying to store the issued post in the database: {err}"
             );
-            Err(Error::App(AppError::StoreIssuedPost { page_id, post_id }))
+            Err(Error::StoreIssuedPost { page_id, post_id })
         }
     }
 }

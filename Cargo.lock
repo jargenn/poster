@@ -1383,6 +1383,8 @@ dependencies = [
  "reqwest",
  "secrecy",
  "serde",
+ "serde_json",
+ "thiserror",
  "time",
  "tokio",
  "tower",

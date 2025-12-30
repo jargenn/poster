@@ -27,5 +27,7 @@ uuid.workspace = true
 serde.workspace = true
 
 facebook_graph_api = { path = "../facebook_graph_api/", features = ["axum"]}
+thiserror = "2.0.17"
+serde_json.workspace = true
 
 

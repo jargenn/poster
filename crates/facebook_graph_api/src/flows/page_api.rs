@@ -4,7 +4,6 @@ use serde::Serialize;
 use serde_json::json;
 use tracing::debug;
 
-use crate::BusinessError;
 use crate::Error;
 use crate::GraphApiError;
 
@@ -112,7 +111,7 @@ pub async fn get_page_credentials(
 
     match page {
         Some(p) => Ok(p),
-        None => Err(BusinessError::PageNotFound {
+        None => Err(Error::PageNotFound {
             page_id: page_id.to_string(),
             user_id: user_id.to_string(),
         })?,

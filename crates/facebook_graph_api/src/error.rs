@@ -14,6 +14,7 @@ use serde_json::json;
 use crate::ErrorCode;
 
 #[derive(Debug, thiserror::Error)]
+#[error("Facebook client code")]
 pub enum Error {
     // TODO: Wouldn't this be repeated from what ErrorCode could tell me?
     #[error(transparent)]
@@ -24,10 +25,8 @@ pub enum Error {
     Reqwest(#[from] reqwest::Error),
     #[error("JSON error: {0}")]
     Json(#[from] serde_json::Error),
-    #[error("Business error: {0}")]
-    Business(#[from] BusinessError),
-    #[error("App error: {0}")]
-    App(#[from] AppError),
+    #[error("The page ({page_id}) was not found in the pages the user ({user_id}) has access to")]
+    PageNotFound { page_id: String, user_id: String },
 }
 
 #[cfg(feature = "axum")]
@@ -46,17 +45,13 @@ impl IntoResponse for Error {
                 tracing::error!(error = %err, "upstream service error");
                 (StatusCode::BAD_GATEWAY, "Upstream service error".into())
             }
+            Error::PageNotFound { .. } => {
+                tracing::warn!(error = %self);
+                (StatusCode::UNPROCESSABLE_ENTITY, self.to_string())
+            }
             Error::Json(err) => {
                 tracing::warn!(error = %err, "invalid json payload");
                 (StatusCode::BAD_REQUEST, "Invalid JSON payload".into())
-            }
-            Error::Business(err) => {
-                tracing::warn!(error = %err, "business logic error");
-                (StatusCode::UNPROCESSABLE_ENTITY, err.to_string())
-            }
-            Error::App(err) => {
-                tracing::error!(error = %err, "internal application error");
-                (StatusCode::INTERNAL_SERVER_ERROR, err.to_string())
             }
         };
 
@@ -141,18 +136,4 @@ pub enum AuthError {
     NotLoggedIn,
     #[error("Access token has expired")]
     Expired,
-}
-
-#[derive(Debug, thiserror::Error)]
-pub enum BusinessError {
-    #[error("The page ({page_id}) was not found in the pages the user ({user_id}) has access to")]
-    PageNotFound { page_id: String, user_id: String },
-}
-
-#[derive(Debug, thiserror::Error)]
-pub enum AppError {
-    #[error(
-        "An error ocurred while trying to store issued post ({post_id}) for the page ({page_id} in the database."
-    )]
-    StoreIssuedPost { page_id: String, post_id: String },
 }
