@@ -76,7 +76,7 @@ pub async fn maintain_sessions(db_path: &str, app_id: &str, app_secret: &str) {
     if count == 0 {
         info!("no sessions needed verification");
     } else {
-        info!(count = sessions.len(), "sessions need verification");
+        info!(count, "sessions need verification");
     }
 
     for (session_id, mut auth) in sessions {
@@ -134,4 +134,53 @@ pub async fn maintain_sessions(db_path: &str, app_id: &str, app_secret: &str) {
             }
         }
     }
+}
+
+/// Queries the database to get pending posts and check if they were published or failed and
+/// updates the posts_issued table
+#[instrument("checking on issued posts", skip(db_path,  _app_secret))]
+pub async fn post_maintenance(db_path: &str, app_id: &str, _app_secret: &str) {
+    let db_path = db_path.to_string();
+    // let app_id = app_id.to_string();
+    // let app_secret = app_secret.to_string();
+    // let client = Client::new();
+
+    let posts: Vec<(String, String)> = tokio::task::spawn_blocking({
+        let db_path = db_path.clone();
+        move || {
+            let conn = Connection::open(&db_path)
+                .expect("Couldn't open a connection to the database");
+            
+            let mut stmt = conn
+                .prepare(
+                    "SELECT page_id, post_id FROM posts_issued
+                    WHERE status = 'pending' 
+                    OR (status = 'failed' AND check_attempts < 5)
+                    ORDER BY created_at ASC;"
+                )
+                .expect("Failed to prepare statement");
+
+            stmt.query_map([], |row| {
+                let page_id: String = row.get(0)?;
+                let post_id: String = row.get(1)?;
+                
+                Ok((
+                    page_id, post_id
+                ))
+            })
+            .expect("Failed to query posts_issued")
+            .filter_map(Result::ok)
+            .collect()
+        }
+    })
+    .await
+    .expect("Task panicked");
+
+    let count = posts.len();
+    if count == 0 {
+        info!("no posts were in pending or failed");
+    } else {
+        info!(count, "posts need checking");
+    }
+
 }

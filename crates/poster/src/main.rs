@@ -1,4 +1,7 @@
-use poster::{AppConfig, background_jobs::maintain_sessions};
+use poster::{
+    AppConfig,
+    background_jobs::{maintain_sessions, post_maintenance},
+};
 use secrecy::ExposeSecret as _;
 use std::time::Duration;
 
@@ -23,6 +26,7 @@ async fn main() -> Result<()> {
     tokio::spawn(async move {
         loop {
             maintain_sessions(db_path.expose_secret(), &app_id, app_secret.expose_secret()).await;
+            post_maintenance(db_path.expose_secret(), &app_id, app_secret.expose_secret()).await;
             tokio::time::sleep(Duration::from_secs(3600)).await;
         }
     });

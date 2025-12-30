@@ -26,23 +26,43 @@ pub enum Error {
     Json(#[from] serde_json::Error),
     #[error("Business error: {0}")]
     Business(#[from] BusinessError),
+    #[error("App error: {0}")]
+    App(#[from] AppError),
 }
 
 #[cfg(feature = "axum")]
 impl IntoResponse for Error {
     fn into_response(self) -> Response {
         let (status, message) = match &self {
-            Error::Auth(err) => (StatusCode::UNAUTHORIZED, err.to_string()),
-            Error::GraphApi(err) => (err.code.into(), err.to_string()),
-            Error::Reqwest(_) => (StatusCode::BAD_GATEWAY, "Upstream service error".into()),
-            Error::Json(_) => (StatusCode::BAD_REQUEST, "Invalid JSON payload".into()),
-            Error::Business(err) => (StatusCode::UNPROCESSABLE_ENTITY, err.to_string()),
+            Error::Auth(err) => {
+                tracing::warn!(error = %err, "authentication failed");
+                (StatusCode::UNAUTHORIZED, err.to_string())
+            }
+            Error::GraphApi(err) => {
+                tracing::error!(error = %err, code = %err.code, "facebook graph api error");
+                (err.code.into(), err.to_string())
+            }
+            Error::Reqwest(err) => {
+                tracing::error!(error = %err, "upstream service error");
+                (StatusCode::BAD_GATEWAY, "Upstream service error".into())
+            }
+            Error::Json(err) => {
+                tracing::warn!(error = %err, "invalid json payload");
+                (StatusCode::BAD_REQUEST, "Invalid JSON payload".into())
+            }
+            Error::Business(err) => {
+                tracing::warn!(error = %err, "business logic error");
+                (StatusCode::UNPROCESSABLE_ENTITY, err.to_string())
+            }
+            Error::App(err) => {
+                tracing::error!(error = %err, "internal application error");
+                (StatusCode::INTERNAL_SERVER_ERROR, err.to_string())
+            }
         };
 
         let body = Json(json!({
             "error": message,
         }));
-
         (status, body).into_response()
     }
 }
@@ -127,4 +147,12 @@ pub enum AuthError {
 pub enum BusinessError {
     #[error("The page ({page_id}) was not found in the pages the user ({user_id}) has access to")]
     PageNotFound { page_id: String, user_id: String },
+}
+
+#[derive(Debug, thiserror::Error)]
+pub enum AppError {
+    #[error(
+        "An error ocurred while trying to store issued post ({post_id}) for the page ({page_id} in the database."
+    )]
+    StoreIssuedPost { page_id: String, post_id: String },
 }

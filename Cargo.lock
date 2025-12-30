@@ -1383,7 +1383,6 @@ dependencies = [
  "reqwest",
  "secrecy",
  "serde",
- "serde_json",
  "time",
  "tokio",
  "tower",
@@ -1392,7 +1391,6 @@ dependencies = [
  "tracing-bunyan-formatter",
  "tracing-subscriber",
  "tracing-tree",
- "url",
  "uuid",
 ]
 

@@ -136,7 +136,7 @@ impl From<ErrorCode> for axum::http::StatusCode {
             10 | 368 => StatusCode::FORBIDDEN,
             200..=299 => StatusCode::FORBIDDEN,
             4 | 17 | 341 => StatusCode::TOO_MANY_REQUESTS,
-            1 | 2 | 3 => StatusCode::BAD_GATEWAY,
+            1..=3 => StatusCode::BAD_GATEWAY,
             506 => StatusCode::CONFLICT,
             1609005 => StatusCode::BAD_REQUEST,
             _ => StatusCode::INTERNAL_SERVER_ERROR,

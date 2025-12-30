@@ -1,6 +1,7 @@
 use std::time::Duration;
 
 use axum::Router;
+use axum::routing::post;
 use axum::{Extension, body::Body, http, routing::get};
 use eyre::Result;
 use r2d2::Pool;
@@ -8,7 +9,8 @@ use r2d2_sqlite::SqliteConnectionManager;
 use secrecy::ExposeSecret;
 use tokio::net::TcpListener;
 use tower::ServiceBuilder;
-use tower_http::trace::TraceLayer;
+use tower_http::LatencyUnit;
+use tower_http::trace::{DefaultOnFailure, DefaultOnRequest, DefaultOnResponse, TraceLayer};
 use tracing::{error, info, warn};
 
 use crate::server::{AppState, endpoints};
@@ -38,6 +40,7 @@ pub async fn start_server(config: AppConfig) -> Result<()> {
     let pool = Pool::builder().max_size(10).build(manager)?;
 
     let page_api = Router::new()
+        .route("/feed/{page_id}", post(endpoints::page_api::post_to_page))
         .route(
             "/page_credentials",
             get(endpoints::page_api::facebooks_pages),
@@ -62,13 +65,30 @@ pub async fn start_server(config: AppConfig) -> Result<()> {
         ))
         .layer(Extension(pool))
         .layer(
-            ServiceBuilder::new().layer(TraceLayer::new_for_http().make_span_with(
-                |req: &http::Request<Body>| {
-                    use color_eyre::owo_colors::OwoColorize;
-                    use tracing::info_span;
-                    info_span!("req", method = %req.method().bold(), uri=%req.uri().bold())
-                },
-            )),
+            ServiceBuilder::new().layer(
+                TraceLayer::new_for_http()
+                    .make_span_with(|req: &http::Request<Body>| {
+                        use color_eyre::owo_colors::OwoColorize;
+                        tracing::info_span!(
+                            "http_request",
+                            method = %req.method().bold(),
+                            uri = %req.uri().bold(),
+                            status = tracing::field::Empty,
+                            latency_ms = tracing::field::Empty,
+                        )
+                    })
+                    .on_request(DefaultOnRequest::new().level(tracing::Level::DEBUG))
+                    .on_response(
+                        DefaultOnResponse::new()
+                            .level(tracing::Level::INFO)
+                            .latency_unit(LatencyUnit::Millis),
+                    )
+                    .on_failure(
+                        DefaultOnFailure::new()
+                            .level(tracing::Level::WARN)
+                            .latency_unit(LatencyUnit::Millis),
+                    ),
+            ),
         )
         .with_state(state);
 

@@ -1,4 +1,5 @@
 use std::{
+    fmt::Display,
     path::Path,
     time::{Duration, UNIX_EPOCH},
 };
@@ -16,21 +17,35 @@ pub fn create_database(db_path: impl AsRef<Path>) {
     let conn = Connection::open(db_path).unwrap();
     conn.execute_batch(
         "BEGIN;
-CREATE TABLE if not exists auth_sessions (
-    session_id TEXT PRIMARY KEY,
-    user_access_token TEXT NOT NULL,
-    app_id TEXT NOT NULL,
-    user_id TEXT NOT NULL,
-    created_at INTEGER NOT NULL DEFAULT (unixepoch()),
-    expires_at INTEGER,         -- unix timestamp (nullable)
-    last_verified_at INTEGER    -- unix timestamp
-);
+            CREATE TABLE if not exists auth_sessions (
+                session_id TEXT PRIMARY KEY,
+                user_access_token TEXT NOT NULL,
+                app_id TEXT NOT NULL,
+                user_id TEXT NOT NULL,
+                created_at INTEGER NOT NULL DEFAULT (unixepoch()),
+                expires_at INTEGER,         -- unix timestamp (nullable)
+                last_verified_at INTEGER    -- unix timestamp
+            );
+        COMMIT;",
+    )
+    .expect("Failed to create auth_sessions table");
+
+    conn.execute_batch(
+        "BEGIN;
+            CREATE TABLE if not exists posts_issued (
+                post_id TEXT PRIMARY KEY,
+                created_at INTEGER NOT NULL DEFAULT (unixepoch()),
+                checked_at TEXT,
+                status TEXT NOT NULL DEFAULT 'pending' CHECK(status IN ('pending', 'published', 'failed')),
+                page_id TEXT NOT NULL,
+                check_attempts INTEGER NOT NULL DEFAULT 0
+            );
         COMMIT;",
     )
     .expect("Failed to create auth_sessions table");
 }
 
-#[instrument(
+#[instrument("Storing session data",
     skip(conn, auth),
     fields(
         session_id = %session_id,
@@ -69,6 +84,48 @@ pub fn store_session(conn: &Connection, session_id: &SessionId, auth: &Authorize
     )?;
     Ok(())
 }
+
+#[derive(Debug)]
+pub enum PostStatus {
+    Failed,
+    Pending,
+    Published,
+}
+
+impl Display for PostStatus {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let out = match self {
+            PostStatus::Failed => "failed",
+            PostStatus::Pending => "pending",
+            PostStatus::Published => "published",
+        };
+        write!(f, "{out}")
+    }
+}
+
+#[instrument("Storing issued post", skip(conn))]
+pub fn store_issued_post(conn: &Connection, page_id: &str, post_id: &str) -> Result<()> {
+    tracing::info!("storing issued post");
+    conn.execute(
+        r#"
+        INSERT INTO posts_issued (
+            post_id,
+            page_id,
+            status,
+            checked_at
+        )
+        VALUES (?1, ?2, ?3, ?4)
+        "#,
+        params![
+            post_id.to_string(),
+            page_id.to_string(),
+            PostStatus::Pending.to_string(),
+            "not yet".to_string(),
+        ],
+    )?;
+    Ok(())
+}
+
 #[instrument("Searching for the session_id in the database"
     skip(conn),
     fields(session_id = %session_id.bold())

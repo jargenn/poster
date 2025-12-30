@@ -116,10 +116,10 @@ impl OAuth<TokenIssued> {
             Some(timestamp) => Some(UNIX_EPOCH + Duration::from_secs(timestamp)),
         };
 
-        if let Some(exp) = expires_at {
-            if SystemTime::now() >= exp {
-                return Err(AuthError::Expired)?;
-            }
+        if let Some(exp) = expires_at
+            && SystemTime::now() >= exp
+        {
+            return Err(AuthError::Expired)?;
         }
 
         Ok(OAuth {
@@ -208,10 +208,10 @@ impl Authorized {
             Some(t) => Some(UNIX_EPOCH + Duration::from_secs(t)),
         };
 
-        if let Some(exp) = expires_at {
-            if SystemTime::now() >= exp {
-                return Err(AuthError::Expired)?;
-            }
+        if let Some(exp) = expires_at
+            && SystemTime::now() >= exp
+        {
+            return Err(AuthError::Expired)?;
         }
 
         self.expires_at = expires_at;

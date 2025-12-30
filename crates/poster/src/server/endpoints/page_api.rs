@@ -2,13 +2,17 @@ use axum::{
     Extension, Json,
     extract::{Path, State},
 };
+use color_eyre::owo_colors::OwoColorize;
+use r2d2::Pool;
+use r2d2_sqlite::SqliteConnectionManager;
 use reqwest::Client;
-use tracing::instrument;
+use serde::Deserialize;
+use tracing::{error, instrument};
 
-use crate::{extractors::LoggedIn, server::AppState};
+use crate::{db::store_issued_post, extractors::LoggedIn, server::AppState};
 use facebook_graph_api::{
-    Error,
-    page_api::{FacebookPages, PageCredentials, get_facebook_pages, get_page_credentials},
+    AppError, Error,
+    page_api::{FacebookPages, Page, get_facebook_pages, get_page_credentials},
 };
 
 #[instrument(skip(client, auth))]
@@ -29,7 +33,7 @@ pub async fn page_credentials(
     State(_): State<AppState>,
     Extension(client): Extension<Client>,
     LoggedIn(auth): LoggedIn,
-) -> Result<Json<PageCredentials>, Error> {
+) -> Result<Json<Page>, Error> {
     let credentials = get_page_credentials(
         &client,
         "24.0",
@@ -38,10 +42,58 @@ pub async fn page_credentials(
         &auth.user_access_token,
     )
     .await?;
-    // .map_err(|err| {
-    //     tracing::error!(error = %err, "page credentials failed");
-    //     StatusCode::BAD_GATEWAY
-    // })?;
 
     Ok(Json(credentials))
+}
+
+#[derive(Debug, Deserialize)]
+pub(crate) struct PostPayload {
+    message: String,
+}
+
+#[axum::debug_handler]
+#[instrument(
+    "Scheduling a post in Facebook",
+    skip(client, auth, pool),
+    fields(page_id = %page_id.bold(), payload = ?payload.bold())
+)]
+pub async fn post_to_page(
+    Path(page_id): Path<String>,
+    State(_): State<AppState>,
+    Extension(client): Extension<Client>,
+    Extension(pool): Extension<Pool<SqliteConnectionManager>>,
+    LoggedIn(auth): LoggedIn,
+    Json(payload): Json<PostPayload>,
+) -> Result<Json<String>, Error> {
+    let conn = pool
+        .get()
+        .expect("Couldn't get access to a connection in the pool");
+
+    let credentials = get_page_credentials(
+        &client,
+        "24.0",
+        &page_id,
+        &auth.user_id,
+        &auth.user_access_token,
+    )
+    .await?;
+
+    let post_id = facebook_graph_api::page_api::post_to_page(
+        &client,
+        "24.0",
+        &payload.message,
+        &page_id,
+        &credentials.access_token,
+    )
+    .await?;
+
+    match store_issued_post(&conn, &page_id, &post_id) {
+        Ok(()) => Ok(Json(post_id)),
+        Err(err) => {
+            error!(
+                "Something bad happened while trying to store the issued post in the database: {err}"
+            );
+            Err(Error::App(AppError::StoreIssuedPost { page_id, post_id }))
+        }
+    }
 }
