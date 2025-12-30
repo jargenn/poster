@@ -3,10 +3,9 @@ use axum::{
     extract::{Path, State},
 };
 use color_eyre::owo_colors::OwoColorize;
-use r2d2::Pool;
-use r2d2_sqlite::SqliteConnectionManager;
 use reqwest::Client;
 use serde::Deserialize;
+use sqlx::SqlitePool;
 use tracing::{error, instrument};
 
 use crate::{db::store_issued_post, error::Error, extractors::LoggedIn, server::AppState};
@@ -58,12 +57,13 @@ pub async fn post_to_page(
     Path(page_id): Path<String>,
     State(_): State<AppState>,
     Extension(client): Extension<Client>,
-    Extension(pool): Extension<Pool<SqliteConnectionManager>>,
+    Extension(pool): Extension<SqlitePool>,
     LoggedIn(auth): LoggedIn,
     Json(payload): Json<PostPayload>,
 ) -> Result<Json<String>, Error> {
-    let conn = pool
-        .get()
+    let mut conn = pool
+        .acquire()
+        .await
         .expect("Couldn't get access to a connection in the pool");
 
     let credentials = get_page_credentials(
@@ -84,7 +84,7 @@ pub async fn post_to_page(
     )
     .await?;
 
-    match store_issued_post(&conn, &page_id, &post_id) {
+    match store_issued_post(&mut conn, &page_id, &post_id).await {
         Ok(()) => Ok(Json(post_id)),
         Err(err) => {
             error!(

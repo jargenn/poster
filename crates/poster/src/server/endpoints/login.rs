@@ -17,10 +17,9 @@ use axum_extra::extract::{
     cookie::{Cookie, SameSite},
 };
 use facebook_graph_api::auth::{CsrfToken, OAuth};
-use r2d2::Pool;
-use r2d2_sqlite::SqliteConnectionManager;
 use reqwest::{Client, StatusCode, header};
 use secrecy::ExposeSecret;
+use sqlx::SqlitePool;
 use tracing::{debug, error, info, instrument};
 
 #[axum::debug_handler]
@@ -28,16 +27,17 @@ use tracing::{debug, error, info, instrument};
 pub async fn fb_login(
     State(app): State<AppState>,
     cookies: CookieJar,
-    Extension(pool): Extension<Pool<SqliteConnectionManager>>,
+    Extension(pool): Extension<SqlitePool>,
 ) -> axum::response::Response {
     if let Some(session_cookie) = cookies.get("session_id") {
         debug!(%session_cookie, "cookie jar has a session_id");
         if let Ok(session_id) = SessionId::parse(session_cookie.value()) {
-            let conn = pool
-                .get()
+            let mut conn = pool
+                .acquire()
+                .await
                 .expect("Couldn't get access to a connection in the pool");
 
-            if let Ok(Some(_)) = load_session(&conn, &session_id) {
+            if let Ok(Some(_)) = load_session(&mut conn, &session_id).await {
                 info!("User is already logged in");
                 return (StatusCode::CONFLICT, "User is already logged in").into_response();
             }
@@ -81,12 +81,13 @@ pub async fn fb_login(
 pub async fn fb_callback(
     State(app): State<AppState>,
     Extension(client): Extension<Client>,
-    Extension(pool): Extension<Pool<SqliteConnectionManager>>,
+    Extension(pool): Extension<SqlitePool>,
     cookies: axum_extra::extract::CookieJar,
     Query(params): Query<HashMap<String, String>>,
 ) -> impl IntoResponse {
-    let conn = pool
-        .get()
+    let mut conn = pool
+        .acquire()
+        .await
         .expect("Couldn't get access to a connection in the pool");
 
     if let Some(error) = params.get("error") {
@@ -162,7 +163,8 @@ pub async fn fb_callback(
 
     let session_id = SessionId::new();
 
-    store_session(&conn, &session_id, &auth_token.state)
+    store_session(&mut conn, &session_id, &auth_token.state)
+        .await
         .expect("Some error happened while storing the session id in the cookies");
 
     let cookies = cookies.add(build_session_cookie(session_id));

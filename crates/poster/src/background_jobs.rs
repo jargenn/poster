@@ -1,76 +1,69 @@
+// TODO: Take in consideration that fetch_all loads everything it finds to memory, so in production
+// I should limit the number of elements it returns.
 use std::time::{Duration, UNIX_EPOCH};
 
-use r2d2_sqlite::{
-    rusqlite::{Connection, params},
-};
 use reqwest::Client;
+use sqlx::{Connection, SqliteConnection};
 use tracing::{info, instrument};
 
 use facebook_graph_api::auth::Authorized;
 
-#[instrument("cleaning and verifying sessions", skip(db_path,  app_secret))]
+#[instrument("cleaning and verifying sessions", skip(db_path, app_secret))]
 pub async fn maintain_sessions(db_path: &str, app_id: &str, app_secret: &str) {
-    let db_path = db_path.to_string();
     let app_id = app_id.to_string();
     let app_secret = app_secret.to_string();
     let client = Client::new();
 
-    let deleted = tokio::task::spawn_blocking({
-        let db_path = db_path.clone();
-        move || {
-            let conn = Connection::open(&db_path)
-                .expect("Couldn't open a connection to the database");
-            conn.execute(
-                "DELETE FROM auth_sessions WHERE expires_at < unixepoch('now')",
-                [],
-            )
-            .expect("Failed to delete expired sessions")
-        }
-    })
-    .await
-    .expect("Task panicked");
-
+    let mut conn = SqliteConnection::connect(db_path)
+        .await
+        .expect("Failed to open a connection to the sqlite db");
+    let deleted = sqlx::query("DELETE FROM auth_sessions WHERE expires_at < unixepoch('now')")
+        .execute(&mut conn)
+        .await
+        .expect("Delete session query failed")
+        .rows_affected();
     if deleted > 0 {
         info!(deleted, "expired sessions cleaned up");
     }
 
-    let sessions: Vec<(String, Authorized)> = tokio::task::spawn_blocking({
-        let db_path = db_path.clone();
-        move || {
-            let conn = Connection::open(&db_path)
-                .expect("Couldn't open a connection to the database");
-            
-            let mut stmt = conn
-                .prepare(
-                    "SELECT session_id, user_access_token, app_id, user_id, expires_at, last_verified_at
+    #[derive(Debug, sqlx::FromRow)]
+    struct AuthRows {
+        session_id: String,
+        user_access_token: String,
+        app_id: String,
+        user_id: String,
+        expires_at: Option<i64>,
+        last_verified_at: i64,
+    }
+
+    let sessions: Vec<(String, Authorized)> = {
+        let rows: Vec<AuthRows> = sqlx::query_as(
+            "SELECT session_id, user_access_token, app_id, user_id, expires_at, last_verified_at
                      FROM auth_sessions
                      WHERE last_verified_at < unixepoch('now') - 3600",
-                )
-                .expect("Failed to prepare statement");
+        )
+        .fetch_all(&mut conn)
+        .await
+        .expect("failed to query sessions");
 
-            stmt.query_map([], |row| {
-                let session_id: String = row.get(0)?;
-                let expires_at: Option<i64> = row.get(4)?;
-                let last_verified_at: i64 = row.get(5)?;
-                
-                Ok((
-                    session_id,
+        rows.iter()
+            .map(|r| {
+                (
+                    r.session_id.clone(),
                     Authorized {
-                        user_access_token: row.get(1)?,
-                        app_id: row.get(2)?,
-                        user_id: row.get(3)?,
-                        expires_at: expires_at.map(|s| UNIX_EPOCH + Duration::from_secs(s as u64)),
-                        last_verified_at: UNIX_EPOCH + Duration::from_secs(last_verified_at as u64),
+                        user_access_token: r.user_access_token.clone(),
+                        app_id: r.app_id.clone(),
+                        user_id: r.user_id.clone(),
+                        expires_at: r
+                            .expires_at
+                            .map(|s| UNIX_EPOCH + Duration::from_secs(s as u64)),
+                        last_verified_at: UNIX_EPOCH
+                            + Duration::from_secs(r.last_verified_at as u64),
                     },
-                ))
+                )
             })
-            .expect("Failed to query sessions")
-            .filter_map(Result::ok)
             .collect()
-        }
-    })
-    .await
-    .expect("Task panicked");
+    };
 
     let count = sessions.len();
     if count == 0 {
@@ -82,31 +75,18 @@ pub async fn maintain_sessions(db_path: &str, app_id: &str, app_secret: &str) {
     for (session_id, mut auth) in sessions {
         match auth.verify(&client, &app_id, &app_secret).await {
             Ok(_) => {
-                let session_id_clone = session_id.clone();
-                let db_path_clone = db_path.clone();
-                let auth_clone = auth.clone(); 
-                
-                if let Err(e) = tokio::task::spawn_blocking(move || {
-                    let conn = Connection::open(&db_path_clone)
-                        .expect("Couldn't open a connection to the database");
-                    
-                    conn.execute(
-                        "UPDATE auth_sessions 
+                if let Err(e) = sqlx::query(
+                    "UPDATE auth_sessions 
                          SET expires_at = ?1, last_verified_at = ?2
                          WHERE session_id = ?3",
-                        params![
-                            auth_clone.expires_at.map(|t| t
-                                .duration_since(UNIX_EPOCH)
-                                .map(|d| d.as_secs() as i64)
-                                .unwrap_or(0)),
-                            auth_clone.last_verified_at
-                                .duration_since(UNIX_EPOCH)
-                                .expect("Time error")
-                                .as_secs() as i64,
-                            session_id_clone,
-                        ],
-                    )
-                })
+                )
+                .bind(auth.expires_at.map(|t| {
+                    t.duration_since(UNIX_EPOCH)
+                        .map(|d| d.as_secs() as i64)
+                        .unwrap_or(0)
+                }))
+                .bind(&session_id)
+                .execute(&mut conn)
                 .await
                 {
                     tracing::error!(session_id, error = %e, "failed to update session");
@@ -114,20 +94,11 @@ pub async fn maintain_sessions(db_path: &str, app_id: &str, app_secret: &str) {
             }
             Err(e) => {
                 tracing::warn!(session_id, error = %e, "session verification failed, deleting");
-                
-                let session_id_clone = session_id.clone();
-                let db_path_clone = db_path.clone();
-                
-                if let Err(e) = tokio::task::spawn_blocking(move || {
-                    let conn = Connection::open(&db_path_clone)
-                        .expect("Couldn't open a connection to the database");
-                    
-                    conn.execute(
-                        "DELETE FROM auth_sessions WHERE session_id = ?1",
-                        params![session_id_clone],
-                    )
-                })
-                .await
+
+                if let Err(e) = sqlx::query("DELETE FROM auth_sessions WHERE session_id = ?1")
+                    .bind(&session_id)
+                    .execute(&mut conn)
+                    .await
                 {
                     tracing::error!(session_id, error = %e, "failed to delete invalid session");
                 }
@@ -138,43 +109,27 @@ pub async fn maintain_sessions(db_path: &str, app_id: &str, app_secret: &str) {
 
 /// Queries the database to get pending posts and check if they were published or failed and
 /// updates the posts_issued table
-#[instrument("checking on issued posts", skip(db_path,  _app_secret))]
+#[instrument("checking on issued posts", skip(db_path, _app_secret))]
 pub async fn post_maintenance(db_path: &str, app_id: &str, _app_secret: &str) {
-    let db_path = db_path.to_string();
     // let app_id = app_id.to_string();
     // let app_secret = app_secret.to_string();
     // let client = Client::new();
+    //
+    let mut conn = SqliteConnection::connect(db_path)
+        .await
+        .expect("Failed to connect to sqlite db");
 
-    let posts: Vec<(String, String)> = tokio::task::spawn_blocking({
-        let db_path = db_path.clone();
-        move || {
-            let conn = Connection::open(&db_path)
-                .expect("Couldn't open a connection to the database");
-            
-            let mut stmt = conn
-                .prepare(
-                    "SELECT page_id, post_id FROM posts_issued
-                    WHERE status = 'pending' 
-                    OR (status = 'failed' AND check_attempts < 5)
-                    ORDER BY created_at ASC;"
-                )
-                .expect("Failed to prepare statement");
-
-            stmt.query_map([], |row| {
-                let page_id: String = row.get(0)?;
-                let post_id: String = row.get(1)?;
-                
-                Ok((
-                    page_id, post_id
-                ))
-            })
-            .expect("Failed to query posts_issued")
-            .filter_map(Result::ok)
-            .collect()
-        }
-    })
+    let posts: Vec<(String, String)> = sqlx::query_as(
+        "
+        SELECT page_id, post_id FROM posts_issued
+        WHERE status = 'pending' 
+        OR (status = 'failed' AND check_attempts < 5)
+        ORDER BY created_at ASC;
+    ",
+    )
+    .fetch_all(&mut conn)
     .await
-    .expect("Task panicked");
+    .expect("Failed to query issued posts");
 
     let count = posts.len();
     if count == 0 {
@@ -182,5 +137,4 @@ pub async fn post_maintenance(db_path: &str, app_id: &str, _app_secret: &str) {
     } else {
         info!(count, "posts need checking");
     }
-
 }

@@ -4,9 +4,8 @@ use axum::Router;
 use axum::routing::post;
 use axum::{Extension, body::Body, http, routing::get};
 use eyre::Result;
-use r2d2::Pool;
-use r2d2_sqlite::SqliteConnectionManager;
 use secrecy::ExposeSecret;
+use sqlx::sqlite::SqlitePoolOptions;
 use tokio::net::TcpListener;
 use tower::ServiceBuilder;
 use tower_http::LatencyUnit;
@@ -35,9 +34,10 @@ pub async fn start_server(config: AppConfig) -> Result<()> {
 
     let url = listener.local_addr()?;
 
-    let state = AppState::new(config);
-    let manager = SqliteConnectionManager::file(state.config.database_path.expose_secret());
-    let pool = Pool::builder().max_size(10).build(manager)?;
+    let state = AppState::new(config.clone());
+    let pool = SqlitePoolOptions::new()
+        .max_connections(10)
+        .connect_lazy(config.database_path.expose_secret())?;
 
     let page_api = Router::new()
         .route("/feed/{page_id}", post(endpoints::page_api::post_to_page))

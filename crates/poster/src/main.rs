@@ -17,7 +17,9 @@ async fn main() -> Result<()> {
     let config_file = std::env::var("CONFIG_FILE").unwrap_or_else(|_| "config".to_owned());
     let config = AppConfig::from_config(config_file.into())?;
     dbg!(&config);
-    create_database(config.database_path.expose_secret());
+    tokio::task::block_in_place(|| {
+        create_database(config.database_path.expose_secret());
+    });
 
     let db_path = config.database_path.clone();
     let app_secret = config.app_secret.clone();

@@ -1,8 +1,7 @@
 use axum::{Extension, Json};
 use axum_extra::extract::CookieJar;
-use r2d2::Pool;
-use r2d2_sqlite::SqliteConnectionManager;
 use serde::Serialize;
+use sqlx::SqlitePool;
 use std::time::{SystemTime, UNIX_EPOCH};
 use time::OffsetDateTime;
 use tracing::instrument;
@@ -23,7 +22,7 @@ pub struct DebugSession {
 
 #[instrument("Inspecting the cookie jar", skip(pool, cookies))]
 pub async fn debug_session(
-    Extension(pool): Extension<Pool<SqliteConnectionManager>>,
+    Extension(pool): Extension<SqlitePool>,
     cookies: CookieJar,
 ) -> Json<DebugSession> {
     let cookie = cookies.get("session_id");
@@ -59,10 +58,11 @@ pub async fn debug_session(
         }
     };
 
-    let conn = pool
-        .get()
+    let mut conn = pool
+        .acquire()
+        .await
         .expect("Couldn't get access to a connection in the pool");
-    let session = load_session(&conn, &session_id).ok().flatten();
+    let session = load_session(&mut conn, &session_id).await.ok().flatten();
 
     match session {
         None => Json(DebugSession {

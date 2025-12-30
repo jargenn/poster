@@ -8,4 +8,4 @@ format = "json"
 body = '{"message":"test"}'
 
 [headers]
-Cookie = "session_id=452bb87b-91e3-4e68-ad36-a6a9568a50e8"
+Cookie = "session_id=94dc5d10-b99b-4cd8-bdbd-2c5e93f153ee"

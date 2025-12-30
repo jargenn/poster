@@ -4,8 +4,7 @@ use axum::{
     http::{StatusCode, request::Parts},
 };
 use axum_extra::extract::CookieJar;
-use r2d2::Pool;
-use r2d2_sqlite::SqliteConnectionManager;
+use sqlx::SqlitePool;
 use tracing::instrument;
 
 use crate::{cookies::SessionId, db::load_session, server::AppState};
@@ -24,7 +23,7 @@ where
     async fn from_request_parts(parts: &mut Parts, state: &S) -> Result<Self, Self::Rejection> {
         tracing::debug!("attempting LoggedIn extraction");
 
-        let pool = Extension::<Pool<SqliteConnectionManager>>::from_request_parts(parts, state)
+        let pool = Extension::<SqlitePool>::from_request_parts(parts, state)
             .await
             .map_err(|_| {
                 tracing::error!("database pool not found in extensions");
@@ -41,16 +40,14 @@ where
 
         tracing::debug!(session_id = %session_id, "session cookie found");
 
-        let conn = pool.get().map_err(|_| {
+        let mut conn = pool.acquire().await.map_err(|_| {
             tracing::error!("failed to get connection from pool");
             StatusCode::INTERNAL_SERVER_ERROR
         })?;
 
-        let auth = load_session(&conn, &session_id)
-            .map_err(|_| {
-                tracing::warn!("session lookup failed");
-                StatusCode::INTERNAL_SERVER_ERROR
-            })?
+        let auth = load_session(&mut conn, &session_id)
+            .await
+            .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
             .ok_or(StatusCode::UNAUTHORIZED)?;
 
         if auth.locally_expired() {
