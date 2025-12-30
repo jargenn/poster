@@ -5,45 +5,11 @@ use std::{
 
 use color_eyre::owo_colors::OwoColorize;
 use eyre::Result;
-use sqlx::{Connection, SqliteConnection};
-use tokio::runtime::Handle;
+use sqlx::SqliteConnection;
 use tracing::{debug, error, info, instrument};
 
 use crate::cookies::SessionId;
 use facebook_graph_api::auth::Authorized;
-
-// TODO: Make this better
-pub fn create_database(db_path: &str) {
-    Handle::current().block_on(async { 
-        let mut conn = SqliteConnection::connect(db_path).await.unwrap();
-        sqlx::query(
-            "BEGIN;
-            CREATE TABLE if not exists auth_sessions (
-                session_id TEXT PRIMARY KEY,
-                user_access_token TEXT NOT NULL,
-                app_id TEXT NOT NULL,
-                user_id TEXT NOT NULL,
-                created_at INTEGER NOT NULL DEFAULT (unixepoch()),
-                expires_at INTEGER,         -- unix timestamp (nullable)
-                last_verified_at INTEGER    -- unix timestamp
-            );
-        COMMIT;",
-            ).execute(&mut conn).await.expect("Failed to create auth_sessions table");
-
-        sqlx::query(
-        "BEGIN;
-            CREATE TABLE if not exists posts_issued (
-                post_id TEXT PRIMARY KEY,
-                created_at INTEGER NOT NULL DEFAULT (unixepoch()),
-                checked_at TEXT,
-                status TEXT NOT NULL DEFAULT 'pending' CHECK(status IN ('pending', 'published', 'failed')),
-                page_id TEXT NOT NULL,
-                check_attempts INTEGER NOT NULL DEFAULT 0
-            );
-        COMMIT;",
-            ).execute(&mut conn).await.expect("Failed to create posts_issued table");
-    });
-}
 
 #[instrument("Storing session data",
     skip(conn, auth),
@@ -60,8 +26,20 @@ pub async fn store_session(
 ) -> Result<()> {
     tracing::info!("storing auth session");
 
-        let inserted =sqlx::query(
-            "INSERT INTO auth_sessions (
+    let session_id = session_id.to_string();
+    let expires_at = auth.expires_at.map(|t| {
+        t.duration_since(UNIX_EPOCH)
+            .map(|res| res.as_secs() as i64)
+            .unwrap_or(0)
+    });
+    let last_verified_at = auth
+        .last_verified_at
+        .duration_since(UNIX_EPOCH)
+        .expect("Couldnt get time since UNIX_EPOCH")
+        .as_secs() as i64;
+
+    let inserted = sqlx::query!(
+        "INSERT INTO auth_sessions (
                 session_id,
                 user_access_token,
                 app_id,
@@ -71,25 +49,17 @@ pub async fn store_session(
             )
             VALUES (?1, ?2, ?3, ?4, ?5, ?6)
             ",
-        )
-        .bind(session_id.to_string())
-        .bind(&auth.user_access_token)
-        .bind(&auth.app_id)
-        .bind(&auth.user_id)
-        .bind(auth.expires_at.map(|t| {
-            t.duration_since(UNIX_EPOCH)
-                .map(|res| res.as_secs() as i64)
-                .unwrap_or(0)
-        }))
-        .bind(
-            auth.last_verified_at
-                .duration_since(UNIX_EPOCH)
-                .expect("Couldnt get time since UNIX_EPOCH")
-                .as_secs() as i64,
-        )
-        .execute(conn)
-        .await.expect("Failed to insert new sessions in the database").rows_affected()
-    ;
+        session_id,
+        auth.user_access_token,
+        auth.app_id,
+        auth.user_id,
+        expires_at,
+        last_verified_at,
+    )
+    .execute(conn)
+    .await
+    .expect("Failed to insert new sessions in the database")
+    .rows_affected();
 
     info!("{inserted} session_data in the database");
     Ok(())
@@ -114,12 +84,16 @@ impl Display for PostStatus {
 }
 
 #[instrument("Storing issued post", skip(conn))]
-pub async fn store_issued_post(conn: &mut SqliteConnection, page_id: &str, post_id: &str) -> Result<()> {
+pub async fn store_issued_post(
+    conn: &mut SqliteConnection,
+    page_id: &str,
+    post_id: &str,
+) -> Result<()> {
     tracing::info!("storing issued post");
 
-    // let inserted = Handle::current().block_on(async {
-        let inserted = sqlx::query(
-            "
+    let status = PostStatus::Pending.to_string();
+    let inserted = sqlx::query!(
+        "
             INSERT INTO posts_issued (
                 post_id,
                 page_id,
@@ -128,14 +102,15 @@ pub async fn store_issued_post(conn: &mut SqliteConnection, page_id: &str, post_
             )
             VALUES (?1, ?2, ?3, ?4)
         ",
-        )
-        .bind(post_id.to_string())
-        .bind(page_id.to_string())
-        .bind(PostStatus::Pending.to_string())
-        .bind("not yet".to_string())
-        .execute(conn)
-        .await.expect("Failed to insert new issued posts into the database").rows_affected()
-    ;
+        post_id,
+        page_id,
+        status,
+        "not yet",
+    )
+    .execute(conn)
+    .await
+    .expect("Failed to insert new issued posts into the database")
+    .rows_affected();
     info!("{inserted} issued post stored in the database");
     Ok(())
 }
@@ -159,8 +134,10 @@ pub async fn load_session(
         last_verified_at: i64,
     }
 
-        let row: SessionRow = match sqlx::query_as(
-            "
+    let session_id = session_id.to_string();
+    let row = match sqlx::query_as!(
+        SessionRow,
+        "
             SELECT
                 user_access_token,
                 app_id,
@@ -170,25 +147,28 @@ pub async fn load_session(
             FROM auth_sessions
             WHERE session_id = ?1
             ",
-        )
-        .bind(session_id.to_string())
-        .fetch_optional(conn)
-        .await {
-            Ok(opt) => match opt {
-                None => {
-                    debug!(%session_id,"no session found for session_id");
-                    return Ok(None)
-                },
-                Some(r) => {
-                    debug!("session found");
-                    r
-                }
-            },
-            Err(e) => {
-                error!(%e,"Error while search for session in auth_sessions table");
-                return Err(eyre::eyre!("Error while search for session in auth_sessions table: {e}"))
+        session_id
+    )
+    .fetch_optional(conn)
+    .await
+    {
+        Ok(opt) => match opt {
+            None => {
+                debug!(%session_id,"no session found for session_id");
+                return Ok(None);
             }
-        };
+            Some(r) => {
+                debug!("session found");
+                r
+            }
+        },
+        Err(e) => {
+            error!(%e,"Error while search for session in auth_sessions table");
+            return Err(eyre::eyre!(
+                "Error while search for session in auth_sessions table: {e}"
+            ));
+        }
+    };
 
     Ok(Some(Authorized {
         user_access_token: row.user_access_token,
@@ -199,7 +179,6 @@ pub async fn load_session(
             .map(|secs| UNIX_EPOCH + Duration::from_secs(secs as u64)),
         last_verified_at: UNIX_EPOCH + Duration::from_secs(row.last_verified_at as u64),
     }))
-
 }
 
 // #[instrument(skip(conn), fields(session_id = %session_id))]

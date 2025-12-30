@@ -17,7 +17,7 @@ pub async fn maintain_sessions(db_path: &str, app_id: &str, app_secret: &str) {
     let mut conn = SqliteConnection::connect(db_path)
         .await
         .expect("Failed to open a connection to the sqlite db");
-    let deleted = sqlx::query("DELETE FROM auth_sessions WHERE expires_at < unixepoch('now')")
+    let deleted = sqlx::query!("DELETE FROM auth_sessions WHERE expires_at < unixepoch('now')")
         .execute(&mut conn)
         .await
         .expect("Delete session query failed")
@@ -26,7 +26,7 @@ pub async fn maintain_sessions(db_path: &str, app_id: &str, app_secret: &str) {
         info!(deleted, "expired sessions cleaned up");
     }
 
-    #[derive(Debug, sqlx::FromRow)]
+    #[derive(Debug)]
     struct AuthRows {
         session_id: String,
         user_access_token: String,
@@ -37,10 +37,19 @@ pub async fn maintain_sessions(db_path: &str, app_id: &str, app_secret: &str) {
     }
 
     let sessions: Vec<(String, Authorized)> = {
-        let rows: Vec<AuthRows> = sqlx::query_as(
-            "SELECT session_id, user_access_token, app_id, user_id, expires_at, last_verified_at
-                     FROM auth_sessions
-                     WHERE last_verified_at < unixepoch('now') - 3600",
+        let rows = sqlx::query_as!(
+            AuthRows,
+            r#"
+                SELECT
+                    session_id        AS "session_id!",
+                    user_access_token AS "user_access_token!",
+                    app_id            AS "app_id!",
+                    user_id           AS "user_id!",
+                    expires_at,
+                    last_verified_at AS "last_verified_at!"
+                FROM auth_sessions
+                WHERE last_verified_at < unixepoch('now') - 3600
+                "#
         )
         .fetch_all(&mut conn)
         .await
@@ -72,20 +81,28 @@ pub async fn maintain_sessions(db_path: &str, app_id: &str, app_secret: &str) {
         info!(count, "sessions need verification");
     }
 
-    for (session_id, mut auth) in sessions {
-        match auth.verify(&client, &app_id, &app_secret).await {
+    for (session_id, mut auth_data) in sessions {
+        match auth_data.verify(&client, &app_id, &app_secret).await {
             Ok(_) => {
-                if let Err(e) = sqlx::query(
-                    "UPDATE auth_sessions 
-                         SET expires_at = ?1, last_verified_at = ?2
-                         WHERE session_id = ?3",
-                )
-                .bind(auth.expires_at.map(|t| {
+                let expires_at = auth_data.expires_at.map(|t| {
                     t.duration_since(UNIX_EPOCH)
                         .map(|d| d.as_secs() as i64)
                         .unwrap_or(0)
-                }))
-                .bind(&session_id)
+                });
+                let last_verified_at = auth_data
+                    .last_verified_at
+                    .duration_since(UNIX_EPOCH)
+                    .expect("Time error")
+                    .as_secs() as i64;
+
+                if let Err(e) = sqlx::query!(
+                    "UPDATE auth_sessions 
+                         SET expires_at = ?1, last_verified_at = ?2
+                         WHERE session_id = ?3",
+                    expires_at,
+                    last_verified_at,
+                    session_id
+                )
                 .execute(&mut conn)
                 .await
                 {
@@ -95,10 +112,12 @@ pub async fn maintain_sessions(db_path: &str, app_id: &str, app_secret: &str) {
             Err(e) => {
                 tracing::warn!(session_id, error = %e, "session verification failed, deleting");
 
-                if let Err(e) = sqlx::query("DELETE FROM auth_sessions WHERE session_id = ?1")
-                    .bind(&session_id)
-                    .execute(&mut conn)
-                    .await
+                if let Err(e) = sqlx::query!(
+                    "DELETE FROM auth_sessions WHERE session_id = ?1",
+                    session_id
+                )
+                .execute(&mut conn)
+                .await
                 {
                     tracing::error!(session_id, error = %e, "failed to delete invalid session");
                 }
@@ -119,13 +138,20 @@ pub async fn post_maintenance(db_path: &str, app_id: &str, _app_secret: &str) {
         .await
         .expect("Failed to connect to sqlite db");
 
-    let posts: Vec<(String, String)> = sqlx::query_as(
-        "
-        SELECT page_id, post_id FROM posts_issued
+    #[derive(Debug)]
+    struct PostData {
+        page_id: String,
+        post_id: String,
+    }
+
+    let posts = sqlx::query_as!(
+        PostData,
+        r#"
+        SELECT page_id AS "page_id!", post_id AS "post_id!" FROM posts_issued
         WHERE status = 'pending' 
         OR (status = 'failed' AND check_attempts < 5)
         ORDER BY created_at ASC;
-    ",
+    "#,
     )
     .fetch_all(&mut conn)
     .await
