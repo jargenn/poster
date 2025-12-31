@@ -1,0 +1,33 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        INSERT INTO scheduled_posts (\n            post_data_id,\n            scheduled_for,\n            schedule_mode\n        )\n        SELECT *\n        FROM UNNEST(\n            $1::int4[],\n            $2::timestamptz[],\n            $3::post_schedule_mode[]\n        )\n        ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Int4Array",
+        "TimestamptzArray",
+        {
+          "Custom": {
+            "name": "post_schedule_mode[]",
+            "kind": {
+              "Array": {
+                "Custom": {
+                  "name": "post_schedule_mode",
+                  "kind": {
+                    "Enum": [
+                      "immediate",
+                      "scheduled"
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "493ba9ffd0a1381b9e01783997cdfb62b98afeb0c2d5b1ddb3fc355f3638fa17"
+}
