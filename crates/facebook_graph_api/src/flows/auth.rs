@@ -158,7 +158,7 @@ impl Authorized {
             Ok(d) => d,
             Err(_) => Duration::ZERO,
         };
-        elapsed > Duration::from_hours(1)
+        elapsed > Duration::from_secs(60 * 60)
     }
 
     pub async fn verify(
