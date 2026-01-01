@@ -1,8 +1,7 @@
 use eyre::Result;
+use facebook_graph_api::auth::RedirectUri;
 use secrecy::{ExposeSecret, SecretString};
 use serde::Deserialize;
-
-use facebook_graph_api::auth::RedirectUri;
 
 #[derive(Debug, Deserialize, Clone)]
 pub struct DatabaseSettings {
@@ -26,15 +25,19 @@ impl DatabaseSettings {
     }
 }
 
+#[derive(Debug, Deserialize, Clone)]
+pub struct CacheSettings {
+    pub name: String,
+    pub ttl: u64,
+}
+
 #[derive(Debug, Clone, Deserialize)]
 pub struct AppConfig {
     pub host: String,
     pub port: u16,
-    pub app_id: String,
-    pub app_secret: SecretString,
-    pub redirect_uri: RedirectUri,
-    pub fb_config_id: SecretString,
     pub database: DatabaseSettings,
+    #[serde(rename = "cache")]
+    pub cache_settings: CacheSettings,
 }
 
 impl AppConfig {
@@ -51,4 +54,22 @@ impl AppConfig {
 
         Ok(settings.try_deserialize()?)
     }
+}
+
+#[derive(Debug, Deserialize, Clone)]
+pub struct ConfigData {
+    #[serde(rename = "id")]
+    pub app_id: String,
+    #[serde(rename = "secret")]
+    pub app_secret: String,
+    #[serde(rename = "config_id")]
+    pub app_config_id: String,
+    pub redirect_url: RedirectUri,
+}
+
+#[derive(Deserialize)]
+pub struct UserConfig {
+    #[serde(flatten)]
+    pub config_data: ConfigData,
+    pub description: Option<String>,
 }

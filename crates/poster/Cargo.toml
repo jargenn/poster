@@ -29,8 +29,10 @@ sqlx = { version = "0.8", features = [
   "tls-rustls-ring-webpki",
   "postgres",
   "time",
-  "migrate"
+  "migrate",
+  "uuid"
 ] }
 tracing-log = "0.2.0"
 reqwest.workspace = true
+moka = { version = "0.12.12", features = ["future", "log"] }
 

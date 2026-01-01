@@ -9,6 +9,3 @@ pub use errcode::*;
 
 mod error;
 pub use error::*;
-
-#[cfg(test)]
-mod tests;

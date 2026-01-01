@@ -9,11 +9,11 @@ thiserror = "2.0.17"
 tracing.workspace = true
 uuid.workspace = true
 url.workspace = true
-serde_json.workspace = true
-serde.workspace = true
 axum = {version = "0.8.8", optional= true}
 unicode-segmentation = "1.12.0"
 time = {version = "0.3.44", optional = true}
+serde.workspace = true
+serde_json.workspace = true
 
 [dev-dependencies]
 expect-test = "1.5.1"

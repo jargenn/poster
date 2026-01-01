@@ -4,7 +4,6 @@ use axum::Router;
 use axum::routing::post;
 use axum::{Extension, body::Body, http, routing::get};
 use eyre::Result;
-use sqlx::postgres::PgPoolOptions;
 use tokio::net::TcpListener;
 use tower::ServiceBuilder;
 use tower_http::LatencyUnit;
@@ -15,7 +14,6 @@ use crate::server::{AppState, endpoints};
 use crate::{AppConfig, debug::debug_session};
 
 pub async fn start_server(config: AppConfig) -> Result<()> {
-    // pub async fn start_server(ready: oneshot::Sender<()>) -> Result<()> {
     let address = format!("{}:{}", config.host, config.port);
     let listener = match TcpListener::bind(&address).await {
         Ok(listener) => listener,
@@ -33,11 +31,8 @@ pub async fn start_server(config: AppConfig) -> Result<()> {
 
     let url = listener.local_addr()?;
 
-    let state = AppState::new(config.clone());
-    let pool = PgPoolOptions::new()
-        .max_connections(10)
-        .acquire_timeout(Duration::from_secs(2))
-        .connect_lazy(&config.database.connection_string())?;
+    let state = AppState::new(config);
+    state.warmup_cache().await?;
 
     let page_api = Router::new()
         .route("/feed/{page_id}", post(endpoints::page_api::schedule_post))
@@ -60,19 +55,22 @@ pub async fn start_server(config: AppConfig) -> Result<()> {
 
     let facebook = Router::new()
         .nest("/page_api", page_api)
-        .route("/oauth/login", get(endpoints::login::fb_login))
-        .route("/oauth/callback", get(endpoints::login::fb_callback))
-        .route("/debug/session", get(debug_session));
+        .route("/{config_id}/oauth/login", get(endpoints::login::fb_login))
+        .route(
+            "/oauth/callback/{config_id}",
+            get(endpoints::login::fb_callback),
+        )
+        .route("/debug/session/{config_id}", get(debug_session));
 
     let router = Router::new()
         .nest("/facebook", facebook)
+        .route("/config", post(endpoints::config::save))
         .route("/health", get(endpoints::health::health_check))
         .layer(Extension(
             reqwest::ClientBuilder::new()
                 .timeout(Duration::from_secs(5))
                 .build()?,
         ))
-        .layer(Extension(pool))
         .layer(
             ServiceBuilder::new().layer(
                 TraceLayer::new_for_http()
@@ -101,7 +99,6 @@ pub async fn start_server(config: AppConfig) -> Result<()> {
         )
         .with_state(state);
 
-    // let _ = ready.send(());
     info!("Server listening on http://{url}");
 
     axum::serve(listener, router)

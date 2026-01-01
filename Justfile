@@ -10,3 +10,9 @@ start_db:
 migrate:
     SKIP_DOCKER=true ./setup/setup_db.sh
 
+check:
+ cargo check --all-features
+
+test:
+    cargo nextest run --all-features
+

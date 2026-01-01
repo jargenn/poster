@@ -1,12 +1,11 @@
-use axum::{Extension, Json};
+use axum::{Json, extract::State};
 use axum_extra::extract::CookieJar;
 use serde::Serialize;
-use sqlx::PgPool;
 use std::time::SystemTime;
 use time::OffsetDateTime;
 use tracing::instrument;
 
-use crate::{cookies::SessionId, db::session::load_session};
+use crate::{cookies::SessionId, db::session::load_session, server::AppState};
 
 #[derive(Serialize)]
 pub struct DebugSession {
@@ -22,7 +21,7 @@ pub struct DebugSession {
 
 #[instrument("Inspecting the cookie jar", skip(pool, cookies))]
 pub async fn debug_session(
-    Extension(pool): Extension<PgPool>,
+    State(AppState { pool, .. }): State<AppState>,
     cookies: CookieJar,
 ) -> Json<DebugSession> {
     let cookie = cookies.get("session_id");

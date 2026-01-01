@@ -1,18 +1,16 @@
 use axum::{
-    Extension,
     extract::{FromRef, FromRequestParts},
     http::{StatusCode, request::Parts},
 };
 use axum_extra::extract::CookieJar;
-use sqlx::PgPool;
 use tracing::instrument;
 
 use crate::{cookies::SessionId, db::session::load_session, server::AppState};
 use facebook_graph_api::auth::Authorized;
 
-pub struct LoggedIn(pub Authorized);
+pub struct Auth(pub Authorized);
 
-impl<S> FromRequestParts<S> for LoggedIn
+impl<S> FromRequestParts<S> for Auth
 where
     S: Send + Sync,
     AppState: FromRef<S>,
@@ -22,13 +20,6 @@ where
     #[instrument(skip(parts, state))]
     async fn from_request_parts(parts: &mut Parts, state: &S) -> Result<Self, Self::Rejection> {
         tracing::debug!("attempting LoggedIn extraction");
-
-        let pool = Extension::<PgPool>::from_request_parts(parts, state)
-            .await
-            .map_err(|_| {
-                tracing::error!("database pool not found in extensions");
-                StatusCode::INTERNAL_SERVER_ERROR
-            })?;
 
         let cookies = CookieJar::from_request_parts(parts, state)
             .await
@@ -49,8 +40,12 @@ where
 
         tracing::debug!(session_id = %session_id, "session cookie found");
 
-        let mut conn = pool.acquire().await.map_err(|_| {
-            tracing::error!("failed to get connection from pool");
+        let app_state = AppState::from_ref(state);
+        let mut conn = app_state.pool.acquire().await.map_err(|err| {
+            tracing::error!(
+                error = err.to_string(),
+                "Failed to acquire handle to database connection in Auth middleware"
+            );
             StatusCode::INTERNAL_SERVER_ERROR
         })?;
 
@@ -69,6 +64,6 @@ where
             return Err(StatusCode::UNAUTHORIZED);
         }
 
-        Ok(LoggedIn(auth))
+        Ok(Auth(auth))
     }
 }

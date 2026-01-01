@@ -15,6 +15,8 @@ pub enum Error {
     FailToSchedulePost { page_id: String },
     #[error("Network error: {0}")]
     Reqwest(#[from] reqwest::Error),
+    #[error("Database error: {0}")]
+    Database(#[from] sqlx::Error),
     #[error("JSON error: {0}")]
     Json(#[from] serde_json::Error),
 }
@@ -23,7 +25,6 @@ impl IntoResponse for Error {
     fn into_response(self) -> Response {
         match self {
             Error::Facebook(err) => err.into_response(),
-
             Error::Reqwest(err) => {
                 tracing::error!(error = %err, "upstream service error");
                 (
@@ -32,7 +33,6 @@ impl IntoResponse for Error {
                 )
                     .into_response()
             }
-
             Error::Json(err) => {
                 tracing::warn!(error = %err, "invalid json payload");
                 (
@@ -41,7 +41,14 @@ impl IntoResponse for Error {
                 )
                     .into_response()
             }
-
+            Error::Database(error) => {
+                tracing::error!(error= %error, "internal server error");
+                (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    Json(json!({ "error": error.to_string() })),
+                )
+                    .into_response()
+            }
             Error::FailToSchedulePost { .. } => {
                 tracing::error!(error = %self, "internal application error");
                 (

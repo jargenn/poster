@@ -3,18 +3,14 @@
 
 use reqwest::Client;
 use sqlx::{Connection, PgConnection};
+use std::collections::HashMap;
 use time::OffsetDateTime;
 use tracing::{info, instrument};
 
 use facebook_graph_api::auth::Authorized;
 
-#[instrument(
-    "Periodic job maintaining session freshness",
-    skip(db_path, app_secret)
-)]
-pub async fn session_maintenance(db_path: &str, app_id: &str, app_secret: &str) {
-    let app_id = app_id.to_string();
-    let app_secret = app_secret.to_string();
+#[instrument("Periodic job maintaining session freshness", skip(db_path))]
+pub async fn session_maintenance(db_path: &str) {
     let client = Client::new();
 
     let mut conn = PgConnection::connect(db_path)
@@ -85,7 +81,35 @@ pub async fn session_maintenance(db_path: &str, app_id: &str, app_secret: &str) 
         info!(count, "sessions need verification");
     }
 
+    let user_configs: HashMap<String, String> =
+        sqlx::query!("SELECT app_id, app_secret FROM user_configs;")
+            .fetch_all(&mut conn)
+            .await
+            .expect("Failed to query the db")
+            .into_iter()
+            .map(|row| (row.app_id, row.app_secret))
+            .collect();
+
     for (session_id, mut auth_data) in sessions {
+        let app_id = auth_data.app_id.clone();
+
+        let Some(app_secret) = user_configs.get(&app_id) else {
+            tracing::warn!(
+                session_id,
+                app_id = %auth_data.app_id,
+                "no matching app config found, deleting session"
+            );
+
+            let _ = sqlx::query!(
+                "DELETE FROM auth_sessions WHERE session_id = $1",
+                session_id
+            )
+            .execute(&mut conn)
+            .await;
+
+            continue;
+        };
+
         match auth_data.verify(&client, &app_id, &app_secret).await {
             Ok(()) => {
                 let expires_at: Option<OffsetDateTime> = auth_data.expires_at.map(Into::into);

@@ -6,7 +6,7 @@ use std::{
     time::{Duration, SystemTime, UNIX_EPOCH},
 };
 use tracing::debug;
-use url::Url;
+use url::{ParseError, Url};
 
 use crate::{AuthError, Error};
 
@@ -56,7 +56,7 @@ pub struct Redirected {
 #[derive(Debug)]
 pub struct Start {
     pub app_id: String,
-    pub redirect_uri: RedirectUri,
+    pub redirect_uri: String,
     pub csrf_token: CsrfToken,
 }
 
@@ -134,7 +134,7 @@ impl OAuth<TokenIssued> {
     }
 }
 
-// TODO: Completar con lo que dice la doc de Facebook
+/// Carries the State of an OAuth Authorized User
 #[derive(Debug, Clone)]
 pub struct Authorized {
     pub user_access_token: String,
@@ -232,7 +232,7 @@ pub struct OAuth<S> {
 }
 
 impl OAuth<Start> {
-    pub fn new(app_id: String, redirect_uri: RedirectUri) -> Self {
+    pub fn new(app_id: String, redirect_uri: String) -> Self {
         let csrf_token = CsrfToken::generate();
 
         OAuth {
@@ -246,11 +246,16 @@ impl OAuth<Start> {
 
     /// Returns the redirect URI and a Cross-Site Reference Token
     pub fn redirect(self, config_id: &str) -> (Url, CsrfToken) {
+        let redirect_url = &self.state.redirect_uri.to_string();
+        debug!(
+            redirect_url,
+            "This is the redirect_uri sent to the oauth dialog"
+        );
         let url = Url::parse_with_params(
             "https://www.facebook.com/v24.0/dialog/oauth",
             &[
                 ("client_id", &self.state.app_id),
-                ("redirect_uri", &self.state.redirect_uri.to_string()),
+                ("redirect_uri", redirect_url),
                 ("state", &self.state.csrf_token.to_string()),
                 ("response_type", &"code".to_string()),
                 ("config_id", &config_id.to_string()),
@@ -283,12 +288,17 @@ impl OAuth<Redirected> {
         app_id: &str,
         app_secret: &str,
     ) -> Result<OAuth<TokenIssued>, Error> {
+        let redirect_url = self.state.redirect_uri.to_string();
+        debug!(
+            redirect_url,
+            "This is the redirect_uri sent during the exchange of CSRF tokens"
+        );
         let res = client
             .get("https://graph.facebook.com/v24.0/oauth/access_token")
             .query(&[
                 ("client_id", app_id),
                 ("client_secret", app_secret),
-                ("redirect_uri", self.state.redirect_uri.as_str()),
+                ("redirect_uri", &redirect_url),
                 ("code", &self.state.code),
             ])
             .send()
@@ -314,7 +324,7 @@ impl OAuth<Redirected> {
             expires_in: Option<u64>,
         }
 
-        let token = serde_json::from_str::<TokenResponse>(&body)?;
+        let token = serde_json::from_str::<TokenResponse>(&body).map_err(Error::from)?;
 
         Ok(OAuth {
             state: TokenIssued {
@@ -352,6 +362,14 @@ impl Deref for CsrfToken {
 /// The Redirect URL that facebook stores when trying to log in via OAuth and is called back
 #[derive(Serialize, Deserialize, Clone)]
 pub struct RedirectUri(Url);
+
+impl TryFrom<String> for RedirectUri {
+    type Error = ParseError;
+
+    fn try_from(value: String) -> Result<Self, Self::Error> {
+        Ok(Self(Url::parse(&value)?))
+    }
+}
 
 impl Debug for RedirectUri {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {

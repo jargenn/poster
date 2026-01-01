@@ -6,10 +6,9 @@ use color_eyre::owo_colors::OwoColorize;
 use http::StatusCode;
 use reqwest::Client;
 use serde::Deserialize;
-use sqlx::PgPool;
 use tracing::{error, instrument};
 
-use crate::{db, error::Error, extractors::LoggedIn, server::AppState};
+use crate::{db, error::Error, extractors::Auth, server::AppState};
 use facebook_graph_api::{
     FacebookPost,
     page_api::{FacebookPages, Page, PostData, get_facebook_pages, get_page_credentials},
@@ -19,7 +18,7 @@ use facebook_graph_api::{
 pub async fn facebooks_pages(
     State(_): State<AppState>,
     Extension(client): Extension<Client>,
-    LoggedIn(auth): LoggedIn,
+    Auth(auth): Auth,
 ) -> Result<Json<FacebookPages>, Error> {
     let fb_pages =
         get_facebook_pages(&client, "24.0", &auth.user_id, &auth.user_access_token).await?;
@@ -32,7 +31,7 @@ pub async fn page_credentials(
     Path(page_id): Path<String>,
     State(_): State<AppState>,
     Extension(client): Extension<Client>,
-    LoggedIn(auth): LoggedIn,
+    Auth(auth): Auth,
 ) -> Result<Json<Page>, Error> {
     let credentials = get_page_credentials(
         &client,
@@ -67,20 +66,16 @@ impl TryInto<FacebookPost> for PostPayload {
 
 #[instrument(
     "Scheduling a list post in the database for Facebook",
-    skip( auth, pool, payload),
+    skip(pool,auth, payload),
     fields(page_id = %page_id.bold())
 )]
 pub async fn schedule_multiple_posts(
     Path(page_id): Path<String>,
-    State(_): State<AppState>,
-    Extension(pool): Extension<PgPool>,
-    LoggedIn(auth): LoggedIn,
+    State(AppState { pool, .. }): State<AppState>,
+    Auth(auth): Auth,
     Json(payload): Json<Vec<PostPayload>>,
 ) -> Result<StatusCode, Error> {
-    let mut conn = pool
-        .acquire()
-        .await
-        .expect("Couldn't get access to a connection in the pool");
+    let mut conn = pool.acquire().await.map_err(Error::Database)?;
 
     let posts: Vec<FacebookPost> = payload
         .into_iter()
@@ -105,15 +100,11 @@ pub async fn schedule_multiple_posts(
 )]
 pub async fn schedule_post(
     Path(page_id): Path<String>,
-    State(_): State<AppState>,
-    Extension(pool): Extension<PgPool>,
-    LoggedIn(auth): LoggedIn,
+    State(AppState { pool, .. }): State<AppState>,
+    Auth(auth): Auth,
     Json(payload): Json<PostPayload>,
 ) -> Result<StatusCode, Error> {
-    let mut conn = pool
-        .acquire()
-        .await
-        .expect("Couldn't get access to a connection in the pool");
+    let mut conn = pool.acquire().await.map_err(Error::Database)?;
 
     let post = payload.try_into()?;
 
@@ -131,14 +122,14 @@ pub async fn schedule_post(
 #[axum::debug_handler]
 #[instrument(
     "Asking for a list of page post from the Graph API"
-    skip(client),
+    skip(client,auth),
     fields(page_id = %page_id.bold())
 )]
 pub async fn get_page_posts(
     Path(page_id): Path<String>,
     State(_): State<AppState>,
     Extension(client): Extension<Client>,
-    LoggedIn(auth): LoggedIn,
+    Auth(auth): Auth,
 ) -> Result<Json<PostData>, Error> {
     let page_credentials = get_page_credentials(
         &client,

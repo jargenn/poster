@@ -1,5 +1,4 @@
 use poster::{AppConfig, background_jobs::session_maintenance};
-use secrecy::ExposeSecret as _;
 use std::time::Duration;
 
 use eyre::Result;
@@ -15,12 +14,10 @@ async fn main() -> Result<()> {
     dbg!(&config);
 
     let db_connection_string = config.database.connection_string();
-    let app_secret = config.app_secret.clone();
-    let app_id = config.app_id.clone();
 
     tokio::spawn(async move {
         loop {
-            session_maintenance(&db_connection_string, &app_id, app_secret.expose_secret()).await;
+            session_maintenance(&db_connection_string).await;
             // post_maintenance(db_connection_string, &app_id, app_secret.expose_secret()).await;
             tokio::time::sleep(Duration::from_secs(3600)).await;
         }
