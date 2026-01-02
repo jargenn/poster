@@ -17,7 +17,6 @@ pub async fn save(
     Json(payload): Json<UserConfig>,
 ) -> Result<(StatusCode, Json<Value>), Error> {
     let mut conn = state.pool.acquire().await.map_err(Error::Database)?;
-    let cache = state.cache;
 
     let id = Uuid::new_v4();
     let config_data = &payload.config_data;
@@ -35,7 +34,10 @@ pub async fn save(
 
     debug!("config stored in database");
 
-    cache.insert(id.to_string(), payload.config_data).await;
+    state
+        .user_config
+        .insert(id.to_string(), payload.config_data)
+        .await;
     debug!("config stored in cache");
 
     let res = json!({"message:": "Config saved!", "config_key": id.to_string()});

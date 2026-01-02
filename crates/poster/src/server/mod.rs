@@ -1,5 +1,5 @@
-pub mod server;
-pub use server::*;
+pub mod startup;
+pub use startup::*;
 
 mod endpoints;
 

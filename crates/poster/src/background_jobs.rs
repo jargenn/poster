@@ -1,26 +1,23 @@
 // TODO: Take in consideration that fetch_all loads everything it finds to memory, so in production
 // I should limit the number of elements it returns.
 
+use moka::future::Cache;
 use reqwest::Client;
-use sqlx::{Connection, PgConnection};
+use sqlx::PgConnection;
 use std::collections::HashMap;
 use time::OffsetDateTime;
 use tracing::{info, instrument};
 
 use facebook_graph_api::auth::Authorized;
 
-#[instrument("Periodic job maintaining session freshness", skip(db_path))]
-pub async fn session_maintenance(db_path: &str) {
+#[instrument("Periodic job maintaining session freshness", skip(conn, auth_cache))]
+pub async fn session_maintenance(conn: &mut PgConnection, auth_cache: Cache<String, Authorized>) {
     let client = Client::new();
-
-    let mut conn = PgConnection::connect(db_path)
-        .await
-        .expect("Failed to open a connection to the sqlite db");
 
     let deleted = sqlx::query!(
         "DELETE FROM auth_sessions WHERE expires_at IS NOT NULL AND expires_at < NOW()"
     )
-    .execute(&mut conn)
+    .execute(&mut *conn)
     .await
     .expect("Delete session query failed")
     .rows_affected();
@@ -54,7 +51,7 @@ pub async fn session_maintenance(db_path: &str) {
                 WHERE last_verified_at < NOW() - INTERVAL '1 hour'
                 "#
         )
-        .fetch_all(&mut conn)
+        .fetch_all(&mut *conn)
         .await
         .expect("failed to query sessions");
 
@@ -83,7 +80,7 @@ pub async fn session_maintenance(db_path: &str) {
 
     let user_configs: HashMap<String, String> =
         sqlx::query!("SELECT app_id, app_secret FROM user_configs;")
-            .fetch_all(&mut conn)
+            .fetch_all(&mut *conn)
             .await
             .expect("Failed to query the db")
             .into_iter()
@@ -104,8 +101,11 @@ pub async fn session_maintenance(db_path: &str) {
                 "DELETE FROM auth_sessions WHERE session_id = $1",
                 session_id
             )
-            .execute(&mut conn)
+            .execute(&mut *conn)
             .await;
+
+            tracing::debug!(%session_id,"Invalidating key in the auth cache");
+            auth_cache.invalidate(&session_id).await;
 
             continue;
         };
@@ -123,11 +123,14 @@ pub async fn session_maintenance(db_path: &str) {
                     last_verified_at,
                     session_id
                 )
-                .execute(&mut conn)
+                .execute(&mut *conn)
                 .await
                 {
                     tracing::error!(session_id, error = %e, "failed to update session");
                 }
+
+                tracing::debug!(%session_id, "Inserting/Updating key in the auth cache");
+                auth_cache.insert(session_id, auth_data).await;
             }
             Err(e) => {
                 tracing::warn!(session_id, error = %e, "session verification failed, deleting");
@@ -136,11 +139,14 @@ pub async fn session_maintenance(db_path: &str) {
                     "DELETE FROM auth_sessions WHERE session_id = $1",
                     session_id
                 )
-                .execute(&mut conn)
+                .execute(&mut *conn)
                 .await
                 {
                     tracing::error!(session_id, error = %e, "failed to delete invalid session");
                 }
+
+                tracing::debug!(%session_id,"Invalidating key in the auth cache");
+                auth_cache.invalidate(&session_id).await;
             }
         }
     }

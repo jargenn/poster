@@ -10,6 +10,7 @@ use tower_http::LatencyUnit;
 use tower_http::trace::{DefaultOnFailure, DefaultOnRequest, DefaultOnResponse, TraceLayer};
 use tracing::{error, info, warn};
 
+use crate::background_jobs::session_maintenance;
 use crate::server::{AppState, endpoints};
 use crate::{AppConfig, debug::debug_session};
 
@@ -33,6 +34,18 @@ pub async fn start_server(config: AppConfig) -> Result<()> {
 
     let state = AppState::new(config);
     state.warmup_cache().await?;
+
+    let pool = state.pool.clone();
+    let auth_data = state.auth_data.clone();
+    tokio::task::spawn(async move {
+        let mut conn = pool
+            .acquire()
+            .await
+            .expect("Failed to open a connection to the sqlite db");
+
+        session_maintenance(&mut conn, auth_data).await;
+        tokio::time::sleep(Duration::from_secs(3600)).await;
+    });
 
     let page_api = Router::new()
         .route("/feed/{page_id}", post(endpoints::page_api::schedule_post))

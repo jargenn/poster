@@ -3,7 +3,7 @@ use axum::{
     http::{StatusCode, request::Parts},
 };
 use axum_extra::extract::CookieJar;
-use tracing::instrument;
+use tracing::{debug, instrument};
 
 use crate::{cookies::SessionId, db::session::load_session, server::AppState};
 use facebook_graph_api::auth::Authorized;
@@ -17,7 +17,7 @@ where
 {
     type Rejection = StatusCode;
 
-    #[instrument(skip(parts, state))]
+    #[instrument(skip(parts, state), fields(session_id))]
     async fn from_request_parts(parts: &mut Parts, state: &S) -> Result<Self, Self::Rejection> {
         tracing::debug!("attempting LoggedIn extraction");
 
@@ -28,7 +28,7 @@ where
                 StatusCode::UNAUTHORIZED
             })?;
 
-        let cookie = cookies.get("session_id").ok_or({
+        let cookie = cookies.get("session_id").ok_or_else(|| {
             tracing::error!("`session_id` is not in the cookie jar");
             StatusCode::UNAUTHORIZED
         })?;
@@ -41,18 +41,33 @@ where
         tracing::debug!(session_id = %session_id, "session cookie found");
 
         let app_state = AppState::from_ref(state);
-        let mut conn = app_state.pool.acquire().await.map_err(|err| {
-            tracing::error!(
-                error = err.to_string(),
-                "Failed to acquire handle to database connection in Auth middleware"
-            );
-            StatusCode::INTERNAL_SERVER_ERROR
-        })?;
 
-        let auth = load_session(&mut conn, &session_id)
-            .await
-            .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
-            .ok_or(StatusCode::UNAUTHORIZED)?;
+        let auth = {
+            match app_state.auth_data.get(&session_id.to_string()).await {
+                None => {
+                    debug!("Auth Cache-Miss. Loading from the database");
+
+                    let mut conn = app_state.pool.acquire().await.map_err(|err| {
+                        tracing::error!(
+                            error = err.to_string(),
+                            "Failed to acquire handle to database connection in Auth middleware"
+                        );
+                        StatusCode::INTERNAL_SERVER_ERROR
+                    })?;
+
+                    let auth = load_session(&mut conn, &session_id)
+                        .await
+                        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
+                        .ok_or_else(|| StatusCode::UNAUTHORIZED)?;
+
+                    auth
+                }
+                Some(auth) => {
+                    debug!("Auth Cache-Hit");
+                    auth
+                }
+            }
+        };
 
         if auth.locally_expired() {
             tracing::warn!("session expired locally");

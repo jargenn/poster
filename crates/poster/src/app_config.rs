@@ -31,13 +31,19 @@ pub struct CacheSettings {
     pub ttl: u64,
 }
 
+#[derive(Debug, Deserialize, Clone)]
+pub struct CacheStore {
+    pub user_config: CacheSettings,
+    pub auth_data: CacheSettings,
+}
+
 #[derive(Debug, Clone, Deserialize)]
 pub struct AppConfig {
     pub host: String,
     pub port: u16,
     pub database: DatabaseSettings,
-    #[serde(rename = "cache")]
-    pub cache_settings: CacheSettings,
+    #[serde(rename = "caches")]
+    pub caches: CacheStore,
 }
 
 impl AppConfig {

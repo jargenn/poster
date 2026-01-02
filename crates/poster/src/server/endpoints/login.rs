@@ -44,7 +44,7 @@ pub async fn fb_login(
         }
     }
 
-    let Some(config) = state.cache.get(&config_id).await else {
+    let Some(config) = state.user_config.get(&config_id).await else {
         let msg = "There is no entry in the cache with that key";
         error!(key = config_id, "{msg}");
 
@@ -102,7 +102,7 @@ pub async fn fb_callback(
     tracing::debug!(?params, "Received callback params");
     let mut conn = state.pool.acquire().await.map_err(Error::Database)?;
 
-    let Some(config) = state.cache.get(&config_id).await else {
+    let Some(config) = state.user_config.get(&config_id).await else {
         let msg = String::from("There is no entry in the cache with that key");
         error!(key = config_id, "{msg}");
 
