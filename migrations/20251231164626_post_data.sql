@@ -5,6 +5,7 @@ CREATE TABLE post_data (
     content TEXT NOT NULL,
     link TEXT,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    has_media BOOLEAN NOT NULL DEFAULT FALSE,
     
     CONSTRAINT content_not_empty 
         CHECK (LENGTH(TRIM(content)) > 0)

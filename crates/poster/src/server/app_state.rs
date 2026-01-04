@@ -6,7 +6,10 @@ use sqlx::{PgPool, postgres::PgPoolOptions};
 use tracing::{debug, instrument};
 use uuid::Uuid;
 
-use crate::{AppConfig, ConfigData, error::Error};
+use crate::{
+    configuration::{AppConfig, ConfigData},
+    error::Error,
+};
 
 #[derive(Debug, Clone)]
 pub struct AppState {

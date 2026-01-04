@@ -1,5 +1,6 @@
 #[cfg(feature = "axum")]
 use axum::{http::StatusCode, response::IntoResponse};
+use serde::{Deserialize, Serialize};
 use std::{
     ops::Deref,
     time::{SystemTime, UNIX_EPOCH},
@@ -115,6 +116,22 @@ impl TryFrom<&ScheduledTime> for OffsetDateTime {
     }
 }
 
+/// Media input can be a URL, base64 data, or a reference to uploaded file
+#[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(untagged)]
+pub enum Input {
+    /// URL to an image
+    Url(String),
+    /// Base64 encoded image with optional metadata
+    Base64 {
+        data: String,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        filename: Option<String>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        content_type: Option<String>,
+    },
+}
+
 /// An effort to enforce the invariants explained in the Page API docs for the parameters needed to
 /// do a post in a Facebook Page via the Page API
 /// `<https://developers.facebook.com/docs/pages-api/posts#publish_posts>`
@@ -124,6 +141,7 @@ pub struct FacebookPost {
     pub published: bool,
     pub link: Option<String>,
     pub scheduled_publish_time: Option<ScheduledTime>,
+    pub media_url: Option<Vec<Input>>,
 }
 
 impl FacebookPost {
@@ -131,6 +149,7 @@ impl FacebookPost {
         message: String,
         scheduled_publish_time: Option<String>,
         link: Option<String>,
+        media: Option<Vec<Input>>,
     ) -> Result<Self, Error> {
         Self::validate_content(&message)?;
 
@@ -157,6 +176,7 @@ impl FacebookPost {
             published,
             link,
             scheduled_publish_time,
+            media_url: media,
         })
     }
 

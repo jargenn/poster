@@ -10,9 +10,12 @@ use tower_http::LatencyUnit;
 use tower_http::trace::{DefaultOnFailure, DefaultOnRequest, DefaultOnResponse, TraceLayer};
 use tracing::{error, info, warn};
 
-use crate::background_jobs::session_maintenance;
-use crate::server::{AppState, endpoints};
-use crate::{AppConfig, debug::debug_session};
+use crate::{
+    background_jobs::session_maintenance,
+    configuration::AppConfig,
+    debug::debug_session,
+    server::{AppState, endpoints},
+};
 
 pub async fn start_server(config: AppConfig) -> Result<()> {
     let address = format!("{}:{}", config.host, config.port);

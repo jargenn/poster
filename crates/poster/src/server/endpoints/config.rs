@@ -4,7 +4,7 @@ use serde_json::{Value, json};
 use tracing::{debug, instrument};
 use uuid::Uuid;
 
-use crate::{UserConfig, error::Error, server::AppState};
+use crate::{configuration::UserConfig, error::Error, server::AppState};
 
 /// Saves the user config in the database and eagerly loads it into the cache.
 #[instrument(

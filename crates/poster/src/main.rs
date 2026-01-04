@@ -1,5 +1,5 @@
 use eyre::Result;
-use poster::AppConfig;
+use poster::configuration::AppConfig;
 use poster::{server::start_server, telemetry};
 use tracing::error;
 

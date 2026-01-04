@@ -33,7 +33,6 @@ CREATE TABLE scheduled_posts (
         )
     ),
 
-    
     CONSTRAINT failed_requires_error 
         CHECK (status != 'failed' OR last_error IS NOT NULL),
     

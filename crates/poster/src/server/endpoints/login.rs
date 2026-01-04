@@ -1,5 +1,4 @@
 // Based on https://deto_ownedvelopers.facebook.com/docs/facebook-login/guides/advanced/manual-flow, (2025-12-26)
-
 use std::collections::HashMap;
 
 use crate::{

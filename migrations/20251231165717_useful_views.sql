@@ -16,7 +16,7 @@ SELECT
     pp.posted_at
 FROM scheduled_posts sp
 JOIN post_data pd ON sp.post_data_id = pd.id
-LEFT JOIN posted_posts pp ON pp.scheduled_post_id = sp.id;
+LEFT JOIN published_posts pp ON pp.scheduled_post_id = sp.id;
 
 CREATE VIEW v_posts_ready_to_process AS
 SELECT 
@@ -44,5 +44,5 @@ SELECT
     sp.status
 FROM post_data pd
 JOIN scheduled_posts sp ON sp.post_data_id = pd.id
-LEFT JOIN posted_posts pp ON pp.post_data_id = pd.id
+LEFT JOIN published_posts pp ON pp.post_data_id = pd.id
 ORDER BY pd.user_id, COALESCE(pp.posted_at, sp.scheduled_for) DESC;

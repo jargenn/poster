@@ -4,7 +4,7 @@ edition = "2024"
 version.workspace = true
 
 [dependencies]
-axum = { version = "0.8.8", features = ["macros"] }
+axum = { version = "0.8.8", features = ["macros","multipart"] }
 axum-extra = { version = "0.12.3", features = ["cookie"] }
 color-eyre = "0.6.5"
 config = "0.15.19"
@@ -35,4 +35,8 @@ sqlx = { version = "0.8", features = [
 tracing-log = "0.2.0"
 reqwest.workspace = true
 moka = { version = "0.12.12", features = ["future", "log"] }
+base64 = "0.22.1"
+image = "0.25.9"
+aws-sdk-s3 = "1.119.0"
+aws-config = { version = "1.1.7", features = ["behavior-version-latest"] }
 

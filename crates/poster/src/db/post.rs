@@ -2,9 +2,14 @@ use color_eyre::owo_colors::OwoColorize as _;
 use eyre::Result;
 use facebook_graph_api::FacebookPost;
 use sqlx::{Acquire as _, PgConnection, Row};
-use std::fmt::Display;
+use std::{fmt::Display, iter::zip};
 use time::OffsetDateTime;
-use tracing::{info, instrument};
+use tracing::{error, info, instrument};
+
+use crate::{
+    error::Error,
+    media::{MediaPipeline, PipelineSettings},
+};
 
 #[derive(Debug, sqlx::Type)]
 #[sqlx(type_name = "post_schedule_mode", rename_all = "lowercase")]
@@ -29,6 +34,7 @@ pub async fn schedule_post(
     user_id: &str,
     page_id: &str,
     fb_post: FacebookPost,
+    media_settings: PipelineSettings,
 ) -> Result<()> {
     tracing::info!(page_id=%page_id.bold(),"Scheduling post");
 
@@ -51,6 +57,22 @@ pub async fn schedule_post(
     )
     .fetch_one(&mut *tx)
     .await?;
+
+    if let Err(err) = MediaPipeline::new(media_settings)
+        .process_media_batch(
+            &mut tx,
+            fb_post.media_url.unwrap_or_default(),
+            post_data_id,
+            &user_id,
+            &page_id,
+        )
+        .await
+    {
+        error!("Something bad happened while during the media processing pipeline: {err}");
+        Err(Error::FailToSchedulePost {
+            page_id: page_id.to_string(),
+        })?;
+    }
 
     let (schedule_mode, scheduled_time) = match fb_post.scheduled_publish_time {
         None => (ScheduleMode::Immediate, OffsetDateTime::now_utc()),
@@ -89,11 +111,13 @@ pub async fn schedule_multiple_posts(
     user_id: &str,
     page_id: &str,
     fb_posts: Vec<FacebookPost>,
+    media_settings: PipelineSettings,
 ) -> Result<()> {
     let num_posts = fb_posts.len();
 
     let mut contents = Vec::with_capacity(num_posts);
     let mut links = Vec::with_capacity(num_posts);
+    let mut media_content = Vec::with_capacity(num_posts);
     let mut scheduled_for: Vec<Option<OffsetDateTime>> = Vec::with_capacity(num_posts);
     let mut schedule_modes = Vec::with_capacity(num_posts);
 
@@ -102,11 +126,13 @@ pub async fn schedule_multiple_posts(
             message,
             link,
             scheduled_publish_time,
+            media_url,
             ..
         } = fb_post;
 
         contents.push(message);
         links.push(link);
+        media_content.push(media_url);
 
         match scheduled_publish_time {
             None => {
@@ -169,6 +195,27 @@ pub async fn schedule_multiple_posts(
     .bind(&schedule_modes)
     .execute(&mut *tx)
     .await?;
+
+    let media_pipeline = MediaPipeline::new(media_settings);
+    assert_eq!(post_data_ids.len(), media_content.len());
+
+    for (post_data_id, media_url) in zip(post_data_ids, media_content) {
+        if let Err(err) = media_pipeline
+            .process_media_batch(
+                &mut tx,
+                media_url.unwrap_or_default(),
+                post_data_id,
+                &user_id,
+                &page_id,
+            )
+            .await
+        {
+            error!("Something bad happened while during the media processing pipeline: {err}");
+            Err(Error::FailToSchedulePost {
+                page_id: page_id.to_string(),
+            })?;
+        }
+    }
 
     tx.commit().await?;
 

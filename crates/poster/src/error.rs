@@ -19,6 +19,8 @@ pub enum Error {
     Database(#[from] sqlx::Error),
     #[error("JSON error: {0}")]
     Json(#[from] serde_json::Error),
+    #[error(transparent)]
+    ImagePipeline(#[from] crate::media::Error),
 }
 
 impl IntoResponse for Error {
@@ -54,6 +56,14 @@ impl IntoResponse for Error {
                 (
                     StatusCode::INTERNAL_SERVER_ERROR,
                     Json(json!({ "error": self.to_string() })),
+                )
+                    .into_response()
+            }
+            Error::ImagePipeline(image_pipeline_error) => {
+                tracing::error!(error = %image_pipeline_error, "internal application error");
+                (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    Json(json!({ "error": image_pipeline_error.to_string() })),
                 )
                     .into_response()
             }
