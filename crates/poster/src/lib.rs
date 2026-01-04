@@ -1,10 +1,10 @@
 pub mod background_jobs;
 pub mod configuration;
 pub mod cookies;
-pub mod db;
 pub mod debug;
 pub mod error;
 pub mod extractors;
 pub mod media;
 pub mod server;
+pub mod storage;
 pub mod telemetry;

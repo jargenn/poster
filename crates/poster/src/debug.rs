@@ -5,7 +5,7 @@ use std::time::SystemTime;
 use time::OffsetDateTime;
 use tracing::instrument;
 
-use crate::{cookies::SessionId, db::session::load_session, server::AppState};
+use crate::{cookies::SessionId, server::AppState, storage::db::session::load_session};
 
 #[derive(Serialize)]
 pub struct DebugSession {

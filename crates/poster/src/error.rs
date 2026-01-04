@@ -2,25 +2,24 @@ use axum::{
     Json,
     response::{IntoResponse, Response},
 };
+use facebook_graph_api::ScheduledTimeError;
 use http::StatusCode;
 use serde_json::json;
+
+use crate::media::MediaError;
 
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
     #[error(transparent)]
     Facebook(#[from] facebook_graph_api::Error),
-    #[error(
-        "An error ocurred while trying to schedule a post for the page ({page_id}) in the database."
-    )]
-    FailToSchedulePost { page_id: String },
+    #[error(transparent)]
+    SchedulingError(#[from] PostSchedulingError),
     #[error("Network error: {0}")]
     Reqwest(#[from] reqwest::Error),
     #[error("Database error: {0}")]
     Database(#[from] sqlx::Error),
     #[error("JSON error: {0}")]
     Json(#[from] serde_json::Error),
-    #[error(transparent)]
-    ImagePipeline(#[from] crate::media::Error),
 }
 
 impl IntoResponse for Error {
@@ -51,22 +50,24 @@ impl IntoResponse for Error {
                 )
                     .into_response()
             }
-            Error::FailToSchedulePost { .. } => {
-                tracing::error!(error = %self, "internal application error");
+            Error::SchedulingError(error) => {
+                tracing::error!(error = %error, "internal application error");
                 (
                     StatusCode::INTERNAL_SERVER_ERROR,
-                    Json(json!({ "error": self.to_string() })),
-                )
-                    .into_response()
-            }
-            Error::ImagePipeline(image_pipeline_error) => {
-                tracing::error!(error = %image_pipeline_error, "internal application error");
-                (
-                    StatusCode::INTERNAL_SERVER_ERROR,
-                    Json(json!({ "error": image_pipeline_error.to_string() })),
+                    Json(json!({ "error": error.to_string() })),
                 )
                     .into_response()
             }
         }
     }
+}
+
+#[derive(thiserror::Error, Debug)]
+pub enum PostSchedulingError {
+    #[error(transparent)]
+    MediaPostError(#[from] MediaError),
+    #[error(transparent)]
+    DateError(#[from] ScheduledTimeError),
+    #[error(transparent)]
+    Database(#[from] sqlx::Error),
 }

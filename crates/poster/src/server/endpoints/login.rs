@@ -3,9 +3,9 @@ use std::collections::HashMap;
 
 use crate::{
     cookies::{SessionId, build_session_cookie},
-    db,
     error::Error,
     server::AppState,
+    storage::db,
 };
 use axum::{
     Extension,

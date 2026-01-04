@@ -5,7 +5,7 @@ use axum::{
 use axum_extra::extract::CookieJar;
 use tracing::{debug, instrument};
 
-use crate::{cookies::SessionId, db::session::load_session, server::AppState};
+use crate::{cookies::SessionId, server::AppState, storage::db::session::load_session};
 use facebook_graph_api::auth::Authorized;
 
 pub struct Auth(pub Authorized);

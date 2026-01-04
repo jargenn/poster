@@ -6,9 +6,9 @@ use color_eyre::owo_colors::OwoColorize;
 use http::StatusCode;
 use reqwest::Client;
 use serde::Deserialize;
-use tracing::{error, instrument};
+use tracing::instrument;
 
-use crate::{db, error::Error, extractors::Auth, media::PipelineSettings, server::AppState};
+use crate::{error::Error, extractors::Auth, server::AppState, storage::db};
 use facebook_graph_api::{
     FacebookPost, Input,
     page_api::{FacebookPages, Page, PostData, get_facebook_pages, get_page_credentials},
@@ -68,7 +68,7 @@ impl TryInto<FacebookPost> for PostPayload {
 
 #[instrument(
     "Scheduling a post in the database for Facebook",
-    skip(payload, auth, pool),
+    skip(payload, auth, pool, config),
     fields(page_id = %page_id.bold())
 )]
 pub async fn schedule_post(
@@ -78,24 +78,25 @@ pub async fn schedule_post(
     Json(payload): Json<PostPayload>,
 ) -> Result<StatusCode, Error> {
     let mut conn = pool.begin().await.map_err(Error::Database)?;
-    let pipeline_settings = PipelineSettings::new(config.media_settings);
 
     let post = payload.try_into()?;
-    if let Err(err) =
-        db::post::schedule_post(&mut conn, &auth.user_id, &page_id, post, pipeline_settings).await
-    {
-        error!(
-            "Something bad happened while trying to store the issued post in the database: {err}"
-        );
-        return Err(Error::FailToSchedulePost { page_id });
-    }
+
+    db::post::schedule_post(
+        &mut conn,
+        &auth.user_id,
+        &page_id,
+        post,
+        config.media_settings,
+    )
+    .await
+    .map_err(Error::from)?;
 
     Ok(StatusCode::ACCEPTED)
 }
 
 #[instrument(
-    "Scheduling a list post in the database for Facebook",
-    skip(pool,auth, payload),
+    "Scheduling multiple posts in the database",
+    skip(pool,auth, payload,config),
     fields(page_id = %page_id.bold())
 )]
 pub async fn schedule_multiple_posts(
@@ -105,27 +106,21 @@ pub async fn schedule_multiple_posts(
     Json(payload): Json<Vec<PostPayload>>,
 ) -> Result<StatusCode, Error> {
     let mut conn = pool.acquire().await.map_err(Error::Database)?;
-    let pipeline_settings = PipelineSettings::new(config.media_settings);
 
     let posts: Vec<FacebookPost> = payload
         .into_iter()
         .map(TryInto::try_into)
         .collect::<Result<_, _>>()?;
 
-    if let Err(err) = db::post::schedule_multiple_posts(
+    db::post::schedule_multiple_posts(
         &mut conn,
         &auth.user_id,
         &page_id,
         posts,
-        pipeline_settings,
+        config.media_settings,
     )
     .await
-    {
-        error!(
-            "Something bad happened while trying to store the issued post in the database: {err}"
-        );
-        return Err(Error::FailToSchedulePost { page_id });
-    }
+    .map_err(Error::from)?;
 
     Ok(StatusCode::ACCEPTED)
 }

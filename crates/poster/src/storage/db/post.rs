@@ -1,15 +1,12 @@
 use color_eyre::owo_colors::OwoColorize as _;
-use eyre::Result;
 use facebook_graph_api::FacebookPost;
+use reqwest::Client;
 use sqlx::{Acquire as _, PgConnection, Row};
 use std::{fmt::Display, iter::zip};
 use time::OffsetDateTime;
-use tracing::{error, info, instrument};
+use tracing::{info, instrument};
 
-use crate::{
-    error::Error,
-    media::{MediaPipeline, PipelineSettings},
-};
+use crate::{configuration::MediaSettings, error::PostSchedulingError, media::Pipeline, storage};
 
 #[derive(Debug, sqlx::Type)]
 #[sqlx(type_name = "post_schedule_mode", rename_all = "lowercase")]
@@ -28,14 +25,14 @@ impl Display for ScheduleMode {
     }
 }
 
-#[instrument("Scheduling post", skip(conn, fb_post))]
+#[instrument("Scheduling post", skip(conn, fb_post, media_settings))]
 pub async fn schedule_post(
     conn: &mut PgConnection,
     user_id: &str,
     page_id: &str,
     fb_post: FacebookPost,
-    media_settings: PipelineSettings,
-) -> Result<()> {
+    media_settings: MediaSettings,
+) -> Result<(), PostSchedulingError> {
     tracing::info!(page_id=%page_id.bold(),"Scheduling post");
 
     let mut tx = conn.begin().await?;
@@ -58,20 +55,19 @@ pub async fn schedule_post(
     .fetch_one(&mut *tx)
     .await?;
 
-    if let Err(err) = MediaPipeline::new(media_settings)
-        .process_media_batch(
-            &mut tx,
-            fb_post.media_url.unwrap_or_default(),
-            post_data_id,
-            &user_id,
-            &page_id,
-        )
-        .await
-    {
-        error!("Something bad happened while during the media processing pipeline: {err}");
-        Err(Error::FailToSchedulePost {
-            page_id: page_id.to_string(),
-        })?;
+    let http_client = Client::new();
+    let process_settings = media_settings.process_settings;
+    let storage = media_settings.storage_settings;
+
+    for input in fb_post.media_url.unwrap_or_default() {
+        let media = Pipeline::from_input(input, &http_client)
+            .await?
+            .decode()?
+            .plan(&process_settings)?
+            .process(post_data_id, user_id, page_id)
+            .await?;
+
+        storage::save_post_media(&mut tx, media, &storage).await?
     }
 
     let (schedule_mode, scheduled_time) = match fb_post.scheduled_publish_time {
@@ -103,16 +99,16 @@ pub async fn schedule_post(
 
 #[instrument(
     "Scheduling multiple posts",
-    skip(conn, fb_posts),
-    fields(user_id, page_id, num_posts)
+    skip(conn, fb_posts, media_settings, user_id),
+    fields(page_id, num_posts)
 )]
 pub async fn schedule_multiple_posts(
     conn: &mut PgConnection,
     user_id: &str,
     page_id: &str,
     fb_posts: Vec<FacebookPost>,
-    media_settings: PipelineSettings,
-) -> Result<()> {
+    media_settings: MediaSettings,
+) -> Result<(), PostSchedulingError> {
     let num_posts = fb_posts.len();
 
     let mut contents = Vec::with_capacity(num_posts);
@@ -196,24 +192,23 @@ pub async fn schedule_multiple_posts(
     .execute(&mut *tx)
     .await?;
 
-    let media_pipeline = MediaPipeline::new(media_settings);
     assert_eq!(post_data_ids.len(), media_content.len());
 
-    for (post_data_id, media_url) in zip(post_data_ids, media_content) {
-        if let Err(err) = media_pipeline
-            .process_media_batch(
-                &mut tx,
-                media_url.unwrap_or_default(),
-                post_data_id,
-                &user_id,
-                &page_id,
-            )
-            .await
-        {
-            error!("Something bad happened while during the media processing pipeline: {err}");
-            Err(Error::FailToSchedulePost {
-                page_id: page_id.to_string(),
-            })?;
+    let http_client = Client::new();
+    let process_settings = media_settings.process_settings;
+    let storage = media_settings.storage_settings;
+
+    for (post_data_id, found_inputs) in zip(post_data_ids, media_content) {
+        let inputs = found_inputs.unwrap_or_default();
+        for input in inputs {
+            let media = Pipeline::from_input(input, &http_client)
+                .await?
+                .decode()?
+                .plan(&process_settings)?
+                .process(post_data_id, user_id, page_id)
+                .await?;
+
+            storage::save_post_media(&mut tx, media, &storage).await?
         }
     }
 
