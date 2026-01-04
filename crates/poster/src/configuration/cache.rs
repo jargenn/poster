@@ -14,7 +14,7 @@ pub struct CacheStore {
 }
 
 #[derive(Debug, Deserialize, Clone)]
-pub struct ConfigData {
+pub struct FbConfig {
     #[serde(rename = "id")]
     pub app_id: String,
     #[serde(rename = "secret")]
@@ -27,6 +27,6 @@ pub struct ConfigData {
 #[derive(Deserialize)]
 pub struct UserConfig {
     #[serde(flatten)]
-    pub config_data: ConfigData,
+    pub config_data: FbConfig,
     pub description: Option<String>,
 }

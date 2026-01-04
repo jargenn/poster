@@ -5,7 +5,7 @@ use std::time::SystemTime;
 use time::OffsetDateTime;
 use tracing::instrument;
 
-use crate::{cookies::SessionId, server::AppState, storage::db::session::load_session};
+use crate::{cookies::SessionId, server::PosterState, storage::db::session::load_session};
 
 #[derive(Serialize)]
 pub struct DebugSession {
@@ -21,7 +21,7 @@ pub struct DebugSession {
 
 #[instrument("Inspecting the cookie jar", skip(pool, cookies))]
 pub async fn debug_session(
-    State(AppState { pool, .. }): State<AppState>,
+    State(PosterState { pool, .. }): State<PosterState>,
     cookies: CookieJar,
 ) -> Json<DebugSession> {
     let cookie = cookies.get("session_id");

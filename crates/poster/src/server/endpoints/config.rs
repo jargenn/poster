@@ -4,7 +4,7 @@ use serde_json::{Value, json};
 use tracing::{debug, instrument};
 use uuid::Uuid;
 
-use crate::{configuration::UserConfig, error::Error, server::AppState};
+use crate::{configuration::UserConfig, error::Error, server::PosterState};
 
 /// Saves the user config in the database and eagerly loads it into the cache.
 #[instrument(
@@ -13,7 +13,7 @@ use crate::{configuration::UserConfig, error::Error, server::AppState};
     fields(app_id)
 )]
 pub async fn save(
-    State(state): State<AppState>,
+    State(state): State<PosterState>,
     Json(payload): Json<UserConfig>,
 ) -> Result<(StatusCode, Json<Value>), Error> {
     let mut conn = state.pool.acquire().await.map_err(Error::Database)?;
@@ -35,7 +35,7 @@ pub async fn save(
     debug!("config stored in database");
 
     state
-        .user_config
+        .config_cache
         .insert(id.to_string(), payload.config_data)
         .await;
     debug!("config stored in cache");

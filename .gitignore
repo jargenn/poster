@@ -6,5 +6,6 @@
 *.csv
 /configuration
 /cartero
+/storage
 *.bunyan
 *.env

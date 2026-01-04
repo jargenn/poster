@@ -5,7 +5,7 @@ use axum::{
 use axum_extra::extract::CookieJar;
 use tracing::{debug, instrument};
 
-use crate::{cookies::SessionId, server::AppState, storage::db::session::load_session};
+use crate::{cookies::SessionId, server::PosterState, storage::db::session::load_session};
 use facebook_graph_api::auth::Authorized;
 
 pub struct Auth(pub Authorized);
@@ -13,7 +13,7 @@ pub struct Auth(pub Authorized);
 impl<S> FromRequestParts<S> for Auth
 where
     S: Send + Sync,
-    AppState: FromRef<S>,
+    PosterState: FromRef<S>,
 {
     type Rejection = StatusCode;
 
@@ -40,14 +40,15 @@ where
 
         tracing::debug!(session_id = %session_id, "session cookie found");
 
-        let app_state = AppState::from_ref(state);
+        let state = PosterState::from_ref(state);
+        let auth_cache = state.auth_cache;
 
         let auth = {
-            match app_state.auth_data.get(&session_id.to_string()).await {
+            match auth_cache.get(&session_id.to_string()).await {
                 None => {
                     debug!("Auth Cache-Miss. Loading from the database");
 
-                    let mut conn = app_state.pool.acquire().await.map_err(|err| {
+                    let mut conn = state.pool.acquire().await.map_err(|err| {
                         tracing::error!(
                             error = err.to_string(),
                             "Failed to acquire handle to database connection in Auth middleware"

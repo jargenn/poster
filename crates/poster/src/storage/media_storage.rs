@@ -10,10 +10,7 @@ pub async fn store_image(
     content_type: &str,
 ) -> Result<(), MediaError> {
     match storage {
-        StorageBackend::Local {
-            base_path,
-            base_url,
-        } => {
+        StorageBackend::Local { base_path, .. } => {
             let full_path = base_path.join(&key);
 
             if let Some(parent) = full_path.parent() {

@@ -2,54 +2,89 @@ use std::time::Duration;
 
 use axum::Router;
 use axum::routing::post;
+use axum::serve::Serve;
 use axum::{Extension, body::Body, http, routing::get};
-use eyre::Result;
+use facebook_graph_api::auth::Authorized;
+use moka::future::{Cache, CacheBuilder};
+use sqlx::PgPool;
+use sqlx::postgres::PgPoolOptions;
 use tokio::net::TcpListener;
 use tower::ServiceBuilder;
 use tower_http::LatencyUnit;
 use tower_http::trace::{DefaultOnFailure, DefaultOnRequest, DefaultOnResponse, TraceLayer};
-use tracing::{error, info, warn};
+use tracing::{error, warn};
 
+use crate::configuration::{DatabaseSettings, FbConfig, MediaSettings};
 use crate::{
-    background_jobs::session_maintenance,
-    configuration::AppConfig,
-    debug::debug_session,
-    server::{AppState, endpoints},
+    background_jobs::session_maintenance, configuration::AppConfig, debug::debug_session,
+    server::endpoints,
 };
 
-pub async fn start_server(config: AppConfig) -> Result<()> {
-    let address = format!("{}:{}", config.host, config.port);
-    let listener = match TcpListener::bind(&address).await {
-        Ok(listener) => listener,
-        Err(err) => {
-            warn!("{err}. Trying with another port...");
-            match TcpListener::bind(format!("{}:0", config.host)).await {
-                Ok(listener) => listener,
-                Err(err) => {
-                    error!("There aren't available ports, closing application...");
-                    return Err(err.into());
+type Server = Serve<TcpListener, Router, Router>;
+pub struct Application {
+    port: u16,
+    server: Server,
+}
+
+impl Application {
+    pub async fn build(config: AppConfig) -> eyre::Result<Self> {
+        let connection_pool = get_connection_pool(&config.database);
+
+        let user_config = CacheBuilder::new(100)
+            .name(&config.caches.user_config.name)
+            .time_to_live(Duration::from_secs(config.caches.user_config.ttl))
+            .build();
+
+        let auth_cache = CacheBuilder::new(100)
+            .name(&config.caches.auth_data.name)
+            .time_to_live(Duration::from_secs(config.caches.auth_data.ttl))
+            .build();
+
+        let mut conn = connection_pool.acquire().await?;
+        session_maintenance(&mut conn, &auth_cache).await;
+
+        let media_settings = config.media_settings;
+
+        let address = format!("{}:{}", config.host, config.port);
+        let listener = match TcpListener::bind(&address).await {
+            Ok(listener) => listener,
+            Err(err) => {
+                warn!("{err}. Trying with another port...");
+                match TcpListener::bind(format!("{}:0", config.host)).await {
+                    Ok(listener) => listener,
+                    Err(err) => {
+                        error!("There aren't available ports, closing application...");
+                        return Err(err.into());
+                    }
                 }
             }
-        }
-    };
+        };
+        let port = listener
+            .local_addr()
+            .expect("Failed to inspect local address of the listener")
+            .port();
 
-    let url = listener.local_addr()?;
+        let state = PosterState {
+            pool: connection_pool,
+            config_cache: user_config,
+            auth_cache,
+            media_settings,
+        };
 
-    let state = AppState::new(config);
-    state.warmup_cache().await?;
+        let server = run(listener, state).await;
+        Ok(Self { port, server })
+    }
 
-    let pool = state.pool.clone();
-    let auth_data = state.auth_data.clone();
-    tokio::task::spawn(async move {
-        let mut conn = pool
-            .acquire()
-            .await
-            .expect("Failed to open a connection to the sqlite db");
+    pub fn port(&self) -> u16 {
+        self.port
+    }
 
-        session_maintenance(&mut conn, auth_data).await;
-        tokio::time::sleep(Duration::from_secs(3600)).await;
-    });
+    pub async fn run_until_stopped(self) -> Result<(), std::io::Error> {
+        self.server.with_graceful_shutdown(shutdown_signal()).await
+    }
+}
 
+pub async fn run(listener: TcpListener, state: PosterState) -> Server {
     let page_api = Router::new()
         .route("/feed/{page_id}", post(endpoints::page_api::schedule_post))
         .route(
@@ -64,10 +99,11 @@ pub async fn start_server(config: AppConfig) -> Result<()> {
             "/page_credentials/{page_id}",
             get(endpoints::page_api::page_credentials),
         )
-        .route(
-            "/page_posts/{page_id}",
-            get(endpoints::page_api::get_page_posts),
-        );
+        // .route(
+        //     "/page_posts/{page_id}",
+        //     get(endpoints::page_api::get_page_posts),
+        // )
+        ;
 
     let facebook = Router::new()
         .nest("/page_api", page_api)
@@ -82,10 +118,12 @@ pub async fn start_server(config: AppConfig) -> Result<()> {
         .nest("/facebook", facebook)
         .route("/config", post(endpoints::config::save))
         .route("/health", get(endpoints::health::health_check))
+        .with_state(state)
         .layer(Extension(
             reqwest::ClientBuilder::new()
                 .timeout(Duration::from_secs(5))
-                .build()?,
+                .build()
+                .expect("Failed to build a reqwest client"),
         ))
         .layer(
             ServiceBuilder::new().layer(
@@ -112,18 +150,28 @@ pub async fn start_server(config: AppConfig) -> Result<()> {
                             .latency_unit(LatencyUnit::Millis),
                     ),
             ),
-        )
-        .with_state(state);
+        );
 
-    info!("Server listening on http://{url}");
-
+    // info!("Server listening on http://{url}");
     axum::serve(listener, router)
-        .with_graceful_shutdown(shutdown_signal())
-        .await?;
-    Ok(())
 }
 
-async fn shutdown_signal() {
+pub fn get_connection_pool(config: &DatabaseSettings) -> PgPool {
+    PgPoolOptions::new()
+        .max_connections(10)
+        .acquire_timeout(Duration::from_secs(2))
+        .connect_lazy_with(config.with_db())
+}
+
+pub async fn shutdown_signal() {
     tokio::signal::ctrl_c().await.ok();
     tracing::info!("Shutting down");
+}
+
+#[derive(Debug, Clone)]
+pub struct PosterState {
+    pub pool: PgPool,
+    pub config_cache: Cache<String, FbConfig>,
+    pub auth_cache: Cache<String, Authorized>,
+    pub media_settings: MediaSettings,
 }

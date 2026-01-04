@@ -4,7 +4,7 @@ use std::collections::HashMap;
 use crate::{
     cookies::{SessionId, build_session_cookie},
     error::Error,
-    server::AppState,
+    server::PosterState,
     storage::db,
 };
 use axum::{
@@ -24,7 +24,7 @@ use tracing::{debug, error, info, instrument};
 #[instrument("OAuth login endpoint", skip(state, cookies))]
 pub async fn fb_login(
     Path(config_id): Path<String>,
-    State(state): State<AppState>,
+    State(state): State<PosterState>,
     cookies: CookieJar,
 ) -> Response {
     if let Some(session_cookie) = cookies.get("session_id") {
@@ -43,7 +43,7 @@ pub async fn fb_login(
         }
     }
 
-    let Some(config) = state.user_config.get(&config_id).await else {
+    let Some(config) = state.config_cache.get(&config_id).await else {
         let msg = "There is no entry in the cache with that key";
         error!(key = config_id, "{msg}");
 
@@ -93,7 +93,7 @@ pub async fn fb_login(
 #[instrument("Login Facebook callback", skip(state, cookies, params, client))]
 pub async fn fb_callback(
     Path(config_id): Path<String>,
-    State(state): State<AppState>,
+    State(state): State<PosterState>,
     Extension(client): Extension<Client>,
     cookies: CookieJar,
     Query(params): Query<HashMap<String, String>>,
@@ -101,7 +101,7 @@ pub async fn fb_callback(
     tracing::debug!(?params, "Received callback params");
     let mut conn = state.pool.acquire().await.map_err(Error::Database)?;
 
-    let Some(config) = state.user_config.get(&config_id).await else {
+    let Some(config) = state.config_cache.get(&config_id).await else {
         let msg = String::from("There is no entry in the cache with that key");
         error!(key = config_id, "{msg}");
 

@@ -1,6 +1,7 @@
 use eyre::Result;
 use poster::configuration::AppConfig;
-use poster::{server::start_server, telemetry};
+use poster::server::Application;
+use poster::telemetry;
 use tracing::error;
 
 #[tokio::main]
@@ -11,7 +12,9 @@ async fn main() -> Result<()> {
     let config = AppConfig::get_config()?;
     dbg!(&config);
 
-    if let Err(err) = start_server(config).await {
+    let server = Application::build(config).await?;
+
+    if let Err(err) = server.run_until_stopped().await {
         error!("Server error: {err}");
     }
 

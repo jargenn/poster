@@ -2,13 +2,13 @@ run:
     cargo run | bunyan
 
 check_scripts:
-    shellcheck -f diff setup/*
+    shellcheck -f diff ./crates/poster/setup/*
 
 start_db:
-    ./setup/setup_db.sh
+    ./crates/poster/setup/setup_db.sh
 
 migrate:
-    SKIP_DOCKER=true ./setup/setup_db.sh
+    SKIP_DOCKER=true ./crates/poster/setup/setup_db.sh
 
 check:
  cargo check --all-features
