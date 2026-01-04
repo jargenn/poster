@@ -1,5 +1,6 @@
 use std::path::PathBuf;
 
+use secrecy::SecretString;
 use serde::Deserialize;
 
 #[derive(Debug, Clone, Deserialize)]
@@ -51,10 +52,11 @@ impl Default for ProcessSettings {
 pub enum StorageBackend {
     R2 {
         account_id: String,
-        access_key_id: String,
-        secret_access_key: String,
+        access_key_id: SecretString,
+        secret_access_key: SecretString,
+        auth_token: SecretString,
         bucket: String,
-        public_url: String,
+        public_url: Option<String>,
     },
     Local {
         base_path: PathBuf,
