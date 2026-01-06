@@ -26,7 +26,7 @@ impl DatabaseSettings {
             PgSslMode::Prefer
         };
 
-        PgConnectOptions::new()
+        PgConnectOptions::new_without_pgpass()
             .host(&self.host)
             .username(&self.username)
             .password(self.password.expose_secret())

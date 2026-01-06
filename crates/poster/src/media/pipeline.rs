@@ -129,6 +129,7 @@ pub struct Media {
     pub page_id: String,
     pub asset: Processed,
 }
+
 impl Media {
     pub fn generate_storage_key(&self) -> String {
         let now = OffsetDateTime::now_utc();

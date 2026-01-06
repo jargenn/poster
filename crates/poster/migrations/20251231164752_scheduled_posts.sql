@@ -15,7 +15,7 @@ CREATE TABLE scheduled_posts (
     post_data_id INT NOT NULL REFERENCES post_data(id) ON DELETE CASCADE,
     scheduled_for TIMESTAMPTZ NOT NULL,
     schedule_mode post_schedule_mode NOT NULL,
-    status scheduled_post_status NOT NULL DEFAULT 'pending',
+    status scheduled_post_status NOT NULL DEFAULT 'processing',
     attempts INT NOT NULL DEFAULT 0,
     last_error TEXT,
     last_attempted_at TIMESTAMPTZ,
@@ -35,9 +35,6 @@ CREATE TABLE scheduled_posts (
 
     CONSTRAINT failed_requires_error 
         CHECK (status != 'failed' OR last_error IS NOT NULL),
-    
-    CONSTRAINT processing_has_attempt 
-        CHECK (status != 'processing' OR last_attempted_at IS NOT NULL),
     
     CONSTRAINT cancelled_finality
         CHECK (status != 'cancelled' OR attempts >= 0),

@@ -4,8 +4,9 @@ use axum::{
 };
 use axum_extra::extract::CookieJar;
 use tracing::{debug, instrument};
+use uuid::Uuid;
 
-use crate::{cookies::SessionId, server::PosterState, storage::db::session::load_session};
+use crate::{server::PosterState, storage::db::session::load_session};
 use facebook_graph_api::auth::Authorized;
 
 pub struct Auth(pub Authorized);
@@ -33,7 +34,7 @@ where
             StatusCode::UNAUTHORIZED
         })?;
 
-        let session_id = SessionId::parse(cookie.value()).map_err(|_| {
+        let session_id = Uuid::parse_str(cookie.value()).map_err(|_| {
             tracing::error!("The session_id stored in the client is not a valid UUID v4");
             StatusCode::BAD_REQUEST
         })?;

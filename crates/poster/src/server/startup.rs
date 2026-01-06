@@ -1,29 +1,31 @@
-use std::time::Duration;
-
 use axum::Router;
 use axum::routing::post;
 use axum::serve::Serve;
 use axum::{Extension, body::Body, http, routing::get};
 use facebook_graph_api::auth::Authorized;
 use moka::future::{Cache, CacheBuilder};
+use reqwest::Url;
 use sqlx::PgPool;
 use sqlx::postgres::PgPoolOptions;
+use std::time::Duration;
 use tokio::net::TcpListener;
+use tokio::signal;
+use tokio::task::{AbortHandle, JoinHandle};
 use tower::ServiceBuilder;
 use tower_http::LatencyUnit;
 use tower_http::trace::{DefaultOnFailure, DefaultOnRequest, DefaultOnResponse, TraceLayer};
-use tracing::{error, warn};
+use tower_sessions::{ExpiredDeletion, Expiry, SessionManagerLayer};
+use tower_sessions_sqlx_store::PostgresStore;
+use tracing::{error, info, warn};
 
 use crate::configuration::{DatabaseSettings, FbAppData, MediaSettings};
-use crate::{
-    background_jobs::session_maintenance, configuration::AppConfig, debug::debug_session,
-    server::endpoints,
-};
+use crate::{configuration::AppConfig, server::routes};
 
 type Server = Serve<TcpListener, Router, Router>;
 pub struct Application {
     port: u16,
     server: Server,
+    session_deletion_task: JoinHandle<Result<(), tower_sessions::session_store::Error>>,
 }
 
 impl Application {
@@ -40,10 +42,8 @@ impl Application {
             .time_to_live(Duration::from_secs(config.caches.session_data.ttl))
             .build();
 
-        let mut conn = connection_pool.acquire().await?;
-        session_maintenance(&mut conn, &session_cache).await;
-
         let media_settings = config.media_settings;
+        let facebook_uri = Url::parse(&config.facebook_uri)?;
 
         let address = format!("{}:{}", config.host, config.port);
         let listener = match TcpListener::bind(&address).await {
@@ -69,35 +69,65 @@ impl Application {
             fb_app_config,
             session_cache,
             media_settings,
+            facebook_uri,
         };
 
-        let server = run(listener, state);
-        Ok(Self { port, server })
+        let session_store = PostgresStore::new(state.pool.clone());
+
+        session_store.migrate().await?;
+
+        let session_deletion_task = tokio::task::spawn(
+            session_store
+                .clone()
+                .continuously_delete_expired(tokio::time::Duration::from_secs(3600)),
+        );
+
+        let session_layer = SessionManagerLayer::new(session_store)
+            // .with_secure(false)
+            .with_expiry(Expiry::OnInactivity(time::Duration::seconds(10)));
+
+        let server = run(listener, state, session_layer);
+
+        Ok(Self {
+            port,
+            server,
+            session_deletion_task,
+        })
     }
 
     pub fn port(&self) -> u16 {
         self.port
     }
 
-    pub async fn run_until_stopped(self) -> Result<(), std::io::Error> {
-        self.server.with_graceful_shutdown(shutdown_signal()).await
+    pub async fn run_until_stopped(self) -> eyre::Result<()> {
+        let abort_signal = self.session_deletion_task.abort_handle();
+        self.server
+            .with_graceful_shutdown(shutdown_signal(abort_signal))
+            .await?;
+
+        self.session_deletion_task.await??;
+
+        Ok(())
     }
 }
 
-pub fn run(listener: TcpListener, state: PosterState) -> Server {
+pub fn run(
+    listener: TcpListener,
+    state: PosterState,
+    session_layer: SessionManagerLayer<PostgresStore>,
+) -> Server {
     let page_api = Router::new()
-        .route("/feed/{page_id}", post(endpoints::page_api::schedule_post))
         .route(
-            "/feed/{page_id}/batch",
-            post(endpoints::page_api::schedule_multiple_posts),
+            "/feed/{page_id}",
+            post(routes::page_api::schedule_posts),
         )
         .route(
             "/page_credentials",
-            get(endpoints::page_api::facebooks_pages),
+            get(routes::page_api::facebooks_pages),
         )
         .route(
             "/page_credentials/{page_id}",
-            get(endpoints::page_api::page_credentials),
+            get(routes::page_api::page_credentials),
         )
         // .route(
         //     "/page_posts/{page_id}",
@@ -107,18 +137,16 @@ pub fn run(listener: TcpListener, state: PosterState) -> Server {
 
     let facebook = Router::new()
         .nest("/page_api", page_api)
-        .route("/{config_id}/oauth/login", get(endpoints::login::fb_login))
-        .route(
-            "/oauth/callback/{config_id}",
-            get(endpoints::login::fb_callback),
-        )
-        .route("/debug/session/{config_id}", get(debug_session));
+        .route("/{config_id}/oauth/login", get(routes::fb_login))
+        .route("/oauth/callback/{config_id}", get(routes::fb_callback));
 
     let router = Router::new()
         .nest("/facebook", facebook)
-        .route("/config", post(endpoints::config::save))
-        .route("/health", get(endpoints::health::health_check))
+        .route("/config", post(routes::config::save))
+        .route("/login", post(routes::login))
+        .route("/health", get(routes::health::health_check))
         .with_state(state)
+        .layer(session_layer)
         .layer(Extension(
             reqwest::ClientBuilder::new()
                 .timeout(Duration::from_secs(5))
@@ -162,9 +190,28 @@ pub fn get_connection_pool(config: &DatabaseSettings) -> PgPool {
         .connect_lazy_with(config.with_db())
 }
 
-pub async fn shutdown_signal() {
-    tokio::signal::ctrl_c().await.ok();
-    tracing::info!("Shutting down");
+async fn shutdown_signal(deletion_task_abort_handle: AbortHandle) {
+    let ctrl_c = async {
+        signal::ctrl_c()
+            .await
+            .expect("failed to install Ctrl+C handler");
+    };
+
+    #[cfg(unix)]
+    let terminate = async {
+        signal::unix::signal(signal::unix::SignalKind::terminate())
+            .expect("failed to install signal handler")
+            .recv()
+            .await;
+    };
+
+    #[cfg(not(unix))]
+    let terminate = std::future::pending::<()>();
+
+    tokio::select! {
+        _ = ctrl_c => { deletion_task_abort_handle.abort() },
+        _ = terminate => { deletion_task_abort_handle.abort() },
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -173,4 +220,5 @@ pub struct PosterState {
     pub fb_app_config: Cache<String, FbAppData>,
     pub session_cache: Cache<String, Authorized>,
     pub media_settings: MediaSettings,
+    pub facebook_uri: Url,
 }

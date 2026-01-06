@@ -7,5 +7,6 @@
 /configuration
 /cartero
 /storage
+**/storage
 *.bunyan
 *.env

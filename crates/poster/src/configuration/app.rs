@@ -11,6 +11,7 @@ pub struct AppConfig {
     pub media_settings: MediaSettings,
     #[serde(rename = "caches")]
     pub caches: CacheStore,
+    pub facebook_uri: String,
 }
 
 impl AppConfig {

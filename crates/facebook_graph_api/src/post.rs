@@ -1,6 +1,7 @@
 #[cfg(feature = "axum")]
 use axum::{http::StatusCode, response::IntoResponse};
 use serde::{Deserialize, Serialize};
+use serde_json::json;
 use std::{
     ops::Deref,
     time::{SystemTime, UNIX_EPOCH},
@@ -203,6 +204,41 @@ impl FacebookPost {
 
         Ok(())
     }
+    pub fn to_payload(&self, page_access_token: String) -> Result<serde_json::Value, Error> {
+        let mut payload = json!({
+            "message": self.message,
+            "access_token": page_access_token,
+            "published": self.published,
+        });
+
+        if let Some(ref link) = self.link {
+            payload["link"] = json!(link);
+        }
+
+        if !self.published {
+            if let Some(ref scheduled_time) = self.scheduled_publish_time {
+                payload["scheduled_publish_time"] = json!(scheduled_time.0);
+            } else {
+                return Err(PostError::MessageError(
+                    "scheduled_publish_time is required when published is false".to_string(),
+                ))?;
+            }
+        }
+
+        match &self.media_url {
+            Some(list) => {
+                for media in list {
+                    match media {
+                        Input::Url(url) => payload["url"] = json!(url),
+                        Input::Base64 { .. } => todo!(),
+                    }
+                }
+            }
+            None => (),
+        }
+
+        Ok(payload)
+    }
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -278,6 +314,7 @@ mod tests {
             "This is a valid message with enough characters!".to_string(),
             None,
             None,
+            None,
         );
 
         assert!(post.is_ok());
@@ -312,6 +349,7 @@ mod tests {
             "Check out this link!".to_string(),
             None,
             Some("https://example.com".to_string()),
+            None,
         );
 
         assert!(post.is_ok());
@@ -322,14 +360,14 @@ mod tests {
     #[test]
     fn content_accepts_exactly_min_chars() {
         let s = "1234567890".to_string();
-        let post = FacebookPost::new(s, None, None);
+        let post = FacebookPost::new(s, None, None, None);
         assert!(post.is_ok());
     }
 
     #[test]
     fn content_accepts_exactly_max_chars() {
         let s = "a".repeat(24_000);
-        let post = FacebookPost::new(s, None, None);
+        let post = FacebookPost::new(s, None, None, None);
         assert!(post.is_ok());
     }
 
@@ -344,6 +382,7 @@ mod tests {
         let post = FacebookPost::new(
             "Valid message here".to_string(),
             Some(time.to_string()),
+            None,
             None,
         );
 
@@ -361,6 +400,7 @@ mod tests {
         let post = FacebookPost::new(
             "Valid message here".to_string(),
             Some(time.to_string()),
+            None,
             None,
         );
 
@@ -382,7 +422,7 @@ mod tests {
 
     #[test]
     fn content_rejects_whitespace_only() {
-        let post = FacebookPost::new("     \n\t   ".to_string(), None, None);
+        let post = FacebookPost::new("     \n\t   ".to_string(), None, None, None);
 
         check(
             post,
@@ -402,7 +442,7 @@ mod tests {
     fn content_rejects_too_few_graphemes() {
         let s = "👍👍👍👍👍👍👍👍👍".to_string();
 
-        let post = FacebookPost::new(s, None, None);
+        let post = FacebookPost::new(s, None, None, None);
 
         check(
             post,
@@ -422,7 +462,7 @@ mod tests {
     fn content_rejects_too_many_graphemes() {
         let s = "👍".repeat(24_001);
 
-        let post = FacebookPost::new(s, None, None);
+        let post = FacebookPost::new(s, None, None, None);
 
         check(
             post,
@@ -449,6 +489,7 @@ mod tests {
         let post = FacebookPost::new(
             "Valid message here".to_string(),
             Some(time.to_string()),
+            None,
             None,
         );
 
@@ -478,6 +519,7 @@ mod tests {
             "Valid message here".to_string(),
             Some(time.to_string()),
             None,
+            None,
         );
 
         check(
@@ -506,6 +548,7 @@ mod tests {
             "Valid message here".to_string(),
             Some(time.to_string()),
             None,
+            None,
         );
 
         check(
@@ -528,6 +571,7 @@ mod tests {
             "This is a valid message content".to_string(),
             None,
             Some("not a url!!!".to_string()),
+            None,
         );
 
         check(
@@ -550,6 +594,7 @@ mod tests {
             "This is a valid message content".to_string(),
             None,
             Some("/relative/path".to_string()),
+            None,
         );
 
         check(
@@ -642,7 +687,7 @@ mod tests {
 
         let timestamp = now + timestamp_offset;
 
-        if let Ok(post) = FacebookPost::new(message, Some(timestamp.to_string()), None) {
+        if let Ok(post) = FacebookPost::new(message, Some(timestamp.to_string()), None, None) {
             TestResult::from_bool(!post.published && post.scheduled_publish_time.is_some())
         } else {
             TestResult::failed()
@@ -656,7 +701,7 @@ mod tests {
             return TestResult::discard();
         }
 
-        if let Ok(post) = FacebookPost::new(message, None, None) {
+        if let Ok(post) = FacebookPost::new(message, None, None, None) {
             TestResult::from_bool(post.published && post.scheduled_publish_time.is_none())
         } else {
             TestResult::failed()
@@ -710,8 +755,8 @@ mod tests {
             }
         }
 
-        let result1 = FacebookPost::new(message.clone(), timestamp_str.clone(), url.clone());
-        let result2 = FacebookPost::new(message, timestamp_str, url);
+        let result1 = FacebookPost::new(message.clone(), timestamp_str.clone(), url.clone(), None);
+        let result2 = FacebookPost::new(message, timestamp_str, url, None);
 
         match (result1, result2) {
             (Ok(post1), Ok(post2)) => TestResult::from_bool(
@@ -755,7 +800,7 @@ mod tests {
             }
         }
 
-        let result = FacebookPost::new(message, timestamp_str, url);
+        let result = FacebookPost::new(message, timestamp_str, url, None);
 
         match (message_is_valid, result) {
             (true, Ok(_)) => TestResult::passed(),

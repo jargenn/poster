@@ -1,5 +1,5 @@
 use sqlx::PgConnection;
-use tracing::instrument;
+use tracing::{Instrument, instrument};
 
 use crate::{
     configuration::StorageBackend,
@@ -18,9 +18,13 @@ pub async fn save_post_media(
     storage: &StorageBackend,
 ) -> Result<(), PostSchedulingError> {
     let storage_key = media.generate_storage_key();
+    tracing::info!(storage_key = %storage_key, "Generated storage key");
     let content_type = media.asset.metadata.format.to_mime_type();
 
     store_image(&media.asset.data, storage, &storage_key, content_type)
+        .instrument(tracing::info_span!(
+            "Storing the image according to the StorageBackend defined"
+        ))
         .await
         .map_err(PostSchedulingError::from)?;
 
@@ -40,6 +44,7 @@ pub async fn save_post_media(
         media.asset.metadata.height.cast_signed(),
     )
     .execute(conn)
+    .instrument(tracing::info_span!("Saving the post_media into the DB"))
     .await
     .map_err(PostSchedulingError::from)?;
 

@@ -3,10 +3,11 @@ use axum::{
     response::{IntoResponse, Response},
 };
 use facebook_graph_api::ScheduledTimeError;
-use http::StatusCode;
+use http::{HeaderValue, StatusCode, header::WWW_AUTHENTICATE};
 use serde_json::json;
+use tower_sessions::session;
 
-use crate::media::MediaError;
+use crate::{authentication, media::MediaError};
 
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
@@ -20,6 +21,10 @@ pub enum Error {
     Database(#[from] sqlx::Error),
     #[error("JSON error: {0}")]
     Json(#[from] serde_json::Error),
+    #[error("Authentication failed.")]
+    AuthError(#[from] authentication::AuthError),
+    #[error("Session error. You are probably not logged in")]
+    SessionError(#[from] session::Error),
 }
 
 impl IntoResponse for Error {
@@ -51,6 +56,31 @@ impl IntoResponse for Error {
                     .into_response()
             }
             Error::SchedulingError(error) => {
+                tracing::error!(error = %error, "internal application error");
+                (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    Json(json!({ "error": error.to_string() })),
+                )
+                    .into_response()
+            }
+            Error::AuthError(report) => {
+                tracing::error!(error = %report, "auth error");
+
+                let header_value = HeaderValue::from_str(r#"Basic realm="publish""#)
+                    .expect("Failed to create header value");
+                let mut response = (
+                    StatusCode::UNAUTHORIZED,
+                    Json(json!({ "error": report.to_string() })),
+                )
+                    .into_response();
+
+                response
+                    .headers_mut()
+                    .insert(WWW_AUTHENTICATE, header_value);
+
+                response
+            }
+            Error::SessionError(error) => {
                 tracing::error!(error = %error, "internal application error");
                 (
                     StatusCode::INTERNAL_SERVER_ERROR,

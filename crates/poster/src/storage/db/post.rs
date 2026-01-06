@@ -1,15 +1,15 @@
 use color_eyre::owo_colors::OwoColorize as _;
-use facebook_graph_api::FacebookPost;
-use reqwest::Client;
+use facebook_graph_api::{FacebookPost, page_api::post_to_page};
+use reqwest::{Client, Url};
 use sqlx::{Acquire as _, PgConnection, Row};
 use std::{fmt::Display, iter::zip};
 use time::OffsetDateTime;
-use tracing::{Instrument, info, instrument};
+use tracing::{Instrument, info, info_span, instrument};
 
 use crate::{
     configuration::MediaSettings,
-    error::PostSchedulingError,
-    media::{Media, Pipeline},
+    error::{Error, PostSchedulingError},
+    media::Pipeline,
     storage,
 };
 
@@ -34,6 +34,7 @@ impl Display for ScheduleMode {
 pub async fn schedule_post(
     conn: &mut PgConnection,
     user_id: &str,
+    user_access_token: &str,
     page_id: &str,
     fb_post: FacebookPost,
     media_settings: MediaSettings,
@@ -112,13 +113,15 @@ pub async fn schedule_post(
     skip(conn, fb_posts, media_settings, user_id),
     fields(page_id, num_posts)
 )]
-pub async fn schedule_multiple_posts(
+pub async fn submit_posts(
     conn: &mut PgConnection,
     user_id: &str,
     page_id: &str,
+    user_access_token: &str,
     fb_posts: Vec<FacebookPost>,
     media_settings: MediaSettings,
-) -> Result<(), PostSchedulingError> {
+    facebook_uri: Url,
+) -> Result<(), Error> {
     let num_posts = fb_posts.len();
 
     let mut contents = Vec::with_capacity(num_posts);
@@ -127,7 +130,7 @@ pub async fn schedule_multiple_posts(
     let mut scheduled_for: Vec<Option<OffsetDateTime>> = Vec::with_capacity(num_posts);
     let mut schedule_modes = Vec::with_capacity(num_posts);
 
-    for fb_post in fb_posts {
+    for fb_post in &fb_posts {
         let FacebookPost {
             message,
             link,
@@ -147,7 +150,7 @@ pub async fn schedule_multiple_posts(
             }
             Some(st) => {
                 schedule_modes.push(ScheduleMode::Scheduled);
-                scheduled_for.push(Some(st.try_into()?));
+                scheduled_for.push(Some(st.try_into().map_err(PostSchedulingError::from)?));
             }
         }
     }
@@ -209,7 +212,8 @@ pub async fn schedule_multiple_posts(
     let storage = media_settings.storage_settings;
 
     for (post_data_id, found_inputs) in zip(post_data_ids, media_content) {
-        let inputs = found_inputs.unwrap_or_default();
+        // FIX: Avoid cloning
+        let inputs = found_inputs.clone().unwrap_or_default();
         for input in inputs {
             let media = async {
                 Pipeline::from_input(input, &http_client)
@@ -221,7 +225,8 @@ pub async fn schedule_multiple_posts(
                     .await
             }
             .instrument(tracing::info_span!("Media processing pipeline"))
-            .await?;
+            .await
+            .map_err(PostSchedulingError::from)?;
 
             storage::save_post_media(&mut tx, media, &storage).await?
         }
@@ -233,8 +238,27 @@ pub async fn schedule_multiple_posts(
         %user_id,
         %page_id,
         num_posts,
-        "batched posts scheduled successfully"
+        "posts data saved in the database"
     );
+
+    tracing::info!("Starting the post workflow");
+    // FIX: Delete this
+    let client = reqwest::Client::new();
+    for post in fb_posts {
+        let post_id = post_to_page(
+            &client,
+            "24.0",
+            post,
+            page_id,
+            user_access_token,
+            user_id,
+            facebook_uri.clone(),
+        )
+        .instrument(info_span!("Posting"))
+        .await?;
+
+        tracing::info!(post_id, "Post succesful!");
+    }
 
     Ok(())
 }

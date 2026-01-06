@@ -1,27 +1,43 @@
+use color_eyre::owo_colors::OwoColorize;
 use reqwest::Client;
 use serde::Deserialize;
 use serde::Serialize;
-use serde_json::json;
 use tracing::debug;
+use tracing::instrument;
+use url::Url;
 
 use crate::Error;
+use crate::FacebookPost;
 use crate::GraphApiError;
 
-fn page_access_token_endpoint(version: &str, user_id: &str, user_access_token: &str) -> String {
-    url::Url::parse_with_params(
-        &format!("https://graph.facebook.com/v{version}/{user_id}/accounts"),
-        &[("access_token", user_access_token)],
-    )
-    .expect("Failed to parse page access token endpoint url")
-    .to_string()
+fn page_access_token_endpoint(
+    version: &str,
+    user_id: &str,
+    user_access_token: &str,
+    facebook_uri: Url,
+) -> String {
+    let url = facebook_uri
+        .join(&format!("v{version}/{user_id}/accounts"))
+        .expect("Failed to construct a URL")
+        .to_string();
+
+    url::Url::parse_with_params(&url, &[("access_token", user_access_token)])
+        .expect("Failed to parse page access token endpoint url")
+        .to_string()
 }
 
-fn feed_endpoint(version: &str, page_id: &str) -> String {
-    url::Url::parse(&format!(
-        "https://graph.facebook.com/v{version}/{page_id}/feed"
-    ))
-    .expect("Failed to parse page post endpoint url")
-    .to_string()
+fn feed_endpoint(version: &str, page_id: &str, facebook_uri: Url) -> String {
+    facebook_uri
+        .join(&format!("v{version}/{page_id}/feed"))
+        .expect("Failed to parse page post endpoint url")
+        .to_string()
+}
+
+fn photos_endpoint(version: &str, page_id: &str, facebook_uri: Url) -> String {
+    facebook_uri
+        .join(&format!("v{version}/{page_id}/photos"))
+        .expect("Failed to parse page post endpoint url")
+        .to_string()
 }
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -66,10 +82,11 @@ pub async fn get_facebook_pages(
     version: &str,
     user_id: &str,
     user_access_token: &str,
+    facebook_uri: Url,
 ) -> Result<FacebookPages, Error> {
     tracing::info!(%user_id, "requesting pages information of the user");
 
-    let endpoint = page_access_token_endpoint(version, user_id, user_access_token);
+    let endpoint = page_access_token_endpoint(version, user_id, user_access_token, facebook_uri);
     debug!(%endpoint, "The endpoint used");
 
     let res = client.get(endpoint).send().await?;
@@ -103,9 +120,11 @@ pub async fn get_page_credentials(
     page_id: &str,
     user_id: &str,
     user_access_token: &str,
+    facebook_uri: Url,
 ) -> Result<Page, Error> {
     tracing::info!(%user_id, "requesting page credentials");
-    let fb_pages = get_facebook_pages(client, version, user_id, user_access_token).await?;
+    let fb_pages =
+        get_facebook_pages(client, version, user_id, user_access_token, facebook_uri).await?;
 
     let page = fb_pages.data.into_iter().find(|page| page.id == page_id);
 
@@ -118,22 +137,53 @@ pub async fn get_page_credentials(
     }
 }
 
+// #[derive(Debug)]
+// pub struct FacebookPost {
+//     pub message: String,
+//     pub published: bool,
+//     pub link: Option<String>,
+//     pub scheduled_publish_time: Option<ScheduledTime>,
+//     pub media_url: Option<Vec<Input>>,
+// }
+
+#[instrument("Posting debug!", skip(client, version), fields(
+        user_access_token=%user_access_token.bold(),
+        user_id=%user_id.bold(),
+        page_id=%page_id.bold(),
+))]
 pub async fn post_to_page(
     client: &Client,
     version: &str,
-    message: &str,
+    post: FacebookPost,
     page_id: &str,
-    page_access_token: &str,
+    user_access_token: &str,
+    user_id: &str,
+    facebook_uri: Url,
 ) -> Result<String, Error> {
-    let endpoint = feed_endpoint(version, page_id);
+    let page_credential = get_page_credentials(
+        client,
+        version,
+        page_id,
+        user_id,
+        user_access_token,
+        facebook_uri.clone(),
+    )
+    .await?;
+
+    let page_access_token = page_credential.access_token;
+
+    // TODO: Work on this
+    let endpoint = if post.media_url.is_none() {
+        feed_endpoint(version, page_id, facebook_uri)
+    } else {
+        photos_endpoint(version, page_id, facebook_uri)
+    };
+
     debug!(%endpoint, "The endpoint used");
 
-    let payload = json!({
-        "message":message,
-        "access_token":page_access_token,
-    });
-
+    let payload = post.to_payload(page_access_token)?;
     debug!("Payload sent {}", payload);
+
     let res = client.post(endpoint).json(&payload).send().await?;
 
     let status = res.status();
@@ -173,10 +223,11 @@ pub async fn get_page_posts(
     version: &str,
     page_id: &str,
     page_access_token: &str,
+    facebook_uri: Url,
 ) -> Result<PostData, Error> {
     let endpoint = format!(
         "{}?access_token={page_access_token}",
-        feed_endpoint(version, page_id)
+        feed_endpoint(version, page_id, facebook_uri)
     );
     debug!(%endpoint, "The endpoint used");
 

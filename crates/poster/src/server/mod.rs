@@ -1,7 +1,7 @@
 pub mod startup;
 pub use startup::*;
 
-mod endpoints;
+mod routes;
 
 #[cfg(test)]
 mod tests;

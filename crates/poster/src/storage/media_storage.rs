@@ -14,14 +14,16 @@ pub async fn store_image(
             let full_path = base_path.join(key);
 
             if let Some(parent) = full_path.parent() {
-                tokio::fs::create_dir_all(parent)
-                    .await
-                    .map_err(MediaError::from)?;
+                tokio::fs::create_dir_all(parent).await.map_err(|e| {
+                    tracing::error!("Failure creating the dirs: {parent:?}");
+                    MediaError::from(e)
+                })?;
             }
 
-            tokio::fs::write(&full_path, data)
-                .await
-                .map_err(MediaError::from)?;
+            tokio::fs::write(&full_path, data).await.map_err(|e| {
+                tracing::error!("Failure to save the image to {full_path:?}");
+                MediaError::from(e)
+            })?;
         }
         StorageBackend::R2 {
             account_id,
@@ -59,6 +61,7 @@ pub async fn store_image(
                 .content_type(content_type)
                 .send()
                 .await
+                .map_err(|e| tracing::error!("Failure to save the image to bucket: {e}"))
                 .expect("Failed to send request to the bucket");
         }
     };

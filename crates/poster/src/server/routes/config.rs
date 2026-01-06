@@ -2,23 +2,30 @@ use axum::extract::{Json, State};
 use http::StatusCode;
 use serde_json::{Value, json};
 use tracing::{debug, instrument};
-use uuid::Uuid;
 
-use crate::{configuration::UserConfig, error::Error, server::PosterState};
+use crate::{
+    configuration::UserConfig, error::Error, server::PosterState, session_state::TypedSession,
+};
 
 /// Saves the user config in the database and eagerly loads it into the cache.
 #[instrument(
     "Storing user config to the database",
-    skip(state, payload),
+    skip(state, payload, session),
     fields(app_id)
 )]
 pub async fn save(
     State(state): State<PosterState>,
+    session: TypedSession,
     Json(payload): Json<UserConfig>,
 ) -> Result<(StatusCode, Json<Value>), Error> {
     let mut conn = state.pool.acquire().await.map_err(Error::Database)?;
 
-    let id = Uuid::new_v4();
+    let id = session
+        .get_user_id()
+        .await
+        .expect("Should be able to find a `user_id")
+        .expect("`user_id` was empty");
+
     let config_data = &payload.config_data;
     let app_id = &config_data.app_id;
 
@@ -38,6 +45,7 @@ pub async fn save(
         .fb_app_config
         .insert(id.to_string(), payload.config_data)
         .await;
+
     debug!("config stored in cache");
 
     let res = json!({"message:": "Config saved!", "config_key": id.to_string()});
