@@ -11,7 +11,7 @@ pub async fn store_image(
 ) -> Result<(), MediaError> {
     match storage {
         StorageBackend::Local { base_path, .. } => {
-            let full_path = base_path.join(&key);
+            let full_path = base_path.join(key);
 
             if let Some(parent) = full_path.parent() {
                 tokio::fs::create_dir_all(parent)
@@ -44,7 +44,7 @@ pub async fn store_image(
                 .behavior_version(BehaviorVersion::latest())
                 .credentials_provider(credentials)
                 .region(Region::new("auto"))
-                .endpoint_url(format!("https://{}.r2.cloudflarestorage.com", account_id))
+                .endpoint_url(format!("https://{account_id}.r2.cloudflarestorage.com"))
                 .force_path_style(true)
                 .build();
 
@@ -59,7 +59,7 @@ pub async fn store_image(
                 .content_type(content_type)
                 .send()
                 .await
-                .unwrap();
+                .expect("Failed to send request to the bucket");
         }
     };
     Ok(())

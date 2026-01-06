@@ -50,6 +50,7 @@ pub(crate) struct PostPayload {
     pub content: String,
     pub scheduled_publish_time: Option<String>,
     pub link: Option<String>,
+    #[serde(alias = "media_url")]
     pub media: Option<Vec<Input>>,
 }
 

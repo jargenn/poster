@@ -11,6 +11,7 @@ pub struct MediaSettings {
     pub storage_settings: StorageBackend,
 }
 
+/// FIX: I am not represeting Facebook's constraints correctly.
 #[derive(Debug, Clone, Deserialize)]
 pub struct ProcessSettings {
     /// Maximum width allowed (default: 4096 per your schema)
@@ -23,9 +24,9 @@ pub struct ProcessSettings {
     pub allowed_content_types: Vec<String>,
     /// Quality for JPEG compression (1-100)
     pub jpeg_quality: u8,
-    /// Target width for resizing (if auto_resize is true)
+    /// Target width for resizing.
     pub target_width: Option<u32>,
-    /// Target height for resizing (if auto_resize is true)
+    /// Target height for resizing.
     pub target_height: Option<u32>,
 }
 

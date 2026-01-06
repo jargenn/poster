@@ -41,7 +41,7 @@ where
         tracing::debug!(session_id = %session_id, "session cookie found");
 
         let state = PosterState::from_ref(state);
-        let auth_cache = state.auth_cache;
+        let auth_cache = state.session_cache;
 
         let auth = {
             match auth_cache.get(&session_id.to_string()).await {
@@ -56,12 +56,10 @@ where
                         StatusCode::INTERNAL_SERVER_ERROR
                     })?;
 
-                    let auth = load_session(&mut conn, &session_id)
+                    load_session(&mut conn, &session_id)
                         .await
                         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
-                        .ok_or_else(|| StatusCode::UNAUTHORIZED)?;
-
-                    auth
+                        .ok_or_else(|| StatusCode::UNAUTHORIZED)?
                 }
                 Some(auth) => {
                     debug!("Auth Cache-Hit");

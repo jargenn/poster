@@ -4,9 +4,14 @@ use reqwest::Client;
 use sqlx::{Acquire as _, PgConnection, Row};
 use std::{fmt::Display, iter::zip};
 use time::OffsetDateTime;
-use tracing::{info, instrument};
+use tracing::{Instrument, info, instrument};
 
-use crate::{configuration::MediaSettings, error::PostSchedulingError, media::Pipeline, storage};
+use crate::{
+    configuration::MediaSettings,
+    error::PostSchedulingError,
+    media::{Media, Pipeline},
+    storage,
+};
 
 #[derive(Debug, sqlx::Type)]
 #[sqlx(type_name = "post_schedule_mode", rename_all = "lowercase")]
@@ -60,12 +65,17 @@ pub async fn schedule_post(
     let storage = media_settings.storage_settings;
 
     for input in fb_post.media_url.unwrap_or_default() {
-        let media = Pipeline::from_input(input, &http_client)
-            .await?
-            .decode()?
-            .plan(&process_settings)?
-            .process(post_data_id, user_id, page_id)
-            .await?;
+        let media = async {
+            Pipeline::from_input(input, &http_client)
+                .await?
+                .decode()
+                .await?
+                .plan(&process_settings)?
+                .process(post_data_id, user_id, page_id)
+                .await
+        }
+        .instrument(tracing::info_span!("Media processing pipeline"))
+        .await?;
 
         storage::save_post_media(&mut tx, media, &storage).await?
     }
@@ -201,12 +211,17 @@ pub async fn schedule_multiple_posts(
     for (post_data_id, found_inputs) in zip(post_data_ids, media_content) {
         let inputs = found_inputs.unwrap_or_default();
         for input in inputs {
-            let media = Pipeline::from_input(input, &http_client)
-                .await?
-                .decode()?
-                .plan(&process_settings)?
-                .process(post_data_id, user_id, page_id)
-                .await?;
+            let media = async {
+                Pipeline::from_input(input, &http_client)
+                    .await?
+                    .decode()
+                    .await?
+                    .plan(&process_settings)?
+                    .process(post_data_id, user_id, page_id)
+                    .await
+            }
+            .instrument(tracing::info_span!("Media processing pipeline"))
+            .await?;
 
             storage::save_post_media(&mut tx, media, &storage).await?
         }

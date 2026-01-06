@@ -35,7 +35,7 @@ pub async fn save(
     debug!("config stored in database");
 
     state
-        .config_cache
+        .fb_app_config
         .insert(id.to_string(), payload.config_data)
         .await;
     debug!("config stored in cache");

@@ -10,11 +10,12 @@ pub struct CacheSettings {
 #[derive(Debug, Deserialize, Clone)]
 pub struct CacheStore {
     pub user_config: CacheSettings,
-    pub auth_data: CacheSettings,
+    pub session_data: CacheSettings,
 }
 
+/// Data related to `app_id`, `app_secret` and `config_id` and `redirect_url` of the Facebook App.
 #[derive(Debug, Deserialize, Clone)]
-pub struct FbConfig {
+pub struct FbAppData {
     #[serde(rename = "id")]
     pub app_id: String,
     #[serde(rename = "secret")]
@@ -27,6 +28,6 @@ pub struct FbConfig {
 #[derive(Deserialize)]
 pub struct UserConfig {
     #[serde(flatten)]
-    pub config_data: FbConfig,
+    pub config_data: FbAppData,
     pub description: Option<String>,
 }

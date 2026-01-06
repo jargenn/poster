@@ -246,7 +246,7 @@ impl OAuth<Start> {
 
     /// Returns the redirect URI and a Cross-Site Reference Token
     pub fn redirect(self, config_id: &str) -> (Url, CsrfToken) {
-        let redirect_url = &self.state.redirect_uri.to_string();
+        let redirect_url = &self.state.redirect_uri.clone();
         debug!(
             redirect_url,
             "This is the redirect_uri sent to the oauth dialog"

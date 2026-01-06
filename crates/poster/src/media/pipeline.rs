@@ -6,7 +6,7 @@ use std::path::PathBuf;
 use time::OffsetDateTime;
 use tracing::debug;
 
-use crate::{configuration::ProcessSettings, media::MediaError};
+use crate::{configuration::ProcessSettings, media::MediaError, telemetry};
 
 /// Media type enum matching your schema constraint
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -121,7 +121,7 @@ pub struct Processed {
     pub metadata: AssetMetadata,
 }
 
-/// Media properly validated and with the post_id from where it belongs
+/// Media properly validated and with the `post_id` from where it belongs
 #[derive(Debug, Clone)]
 pub struct Media {
     pub post_id: i32,
@@ -182,14 +182,17 @@ impl Pipeline<Raw> {
         })
     }
 
-    pub fn decode(self) -> Result<Pipeline<Decoded>, MediaError> {
-        let decoded = Self::decode_and_inspect(&self.state.bytes)?;
+    pub async fn decode(self) -> Result<Pipeline<Decoded>, MediaError> {
+        let decoded = telemetry::spawn_blocking_with_tracing(move || {
+            Self::decode_and_inspect(&self.state.bytes)
+        })
+        .await
+        .expect("Failed to join decode task")?;
 
         Ok(Pipeline { state: decoded })
     }
 
     async fn load_bytes(source: &Source, client: &reqwest::Client) -> Result<Vec<u8>, MediaError> {
-        debug!("Reading the bytes of the media");
         match source {
             Source::LocalPath(path) => Ok(tokio::fs::read(path).await.map_err(MediaError::from)?),
             Source::Url(url) => {
@@ -213,7 +216,6 @@ impl Pipeline<Raw> {
         use image::ImageReader;
         use std::io::Cursor;
 
-        debug!("Reading image metadata");
         let (image, format) = {
             let reader = ImageReader::new(Cursor::new(bytes))
                 .with_guessed_format()
@@ -227,8 +229,6 @@ impl Pipeline<Raw> {
 
             (reader.decode().map_err(MediaError::from)?, format)
         };
-
-        debug!(?format, "guessed format");
 
         let (width, height) = (image.width(), image.height());
         let size_bytes = bytes.len();
@@ -299,7 +299,11 @@ impl Pipeline<Planned> {
         user_id: &str,
         page_id: &str,
     ) -> Result<Media, MediaError> {
-        let data = Self::apply_transform_plan(self.state.image, self.state.plan)?;
+        let data = telemetry::spawn_blocking_with_tracing(move || {
+            Self::apply_transform_plan(self.state.image, &self.state.plan)
+        })
+        .await
+        .expect("Failed to join the task")?;
 
         Ok(Media {
             post_id,
@@ -310,7 +314,7 @@ impl Pipeline<Planned> {
     }
 
     /// Inspect the image passed to it, determines if it needs resizing
-    fn apply_transform_plan(mut image: DynamicImage, plan: Plan) -> Result<Processed, MediaError> {
+    fn apply_transform_plan(mut image: DynamicImage, plan: &Plan) -> Result<Processed, MediaError> {
         if plan.resize {
             image = image.resize(
                 plan.target_width,

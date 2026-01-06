@@ -14,7 +14,7 @@ use tower_http::LatencyUnit;
 use tower_http::trace::{DefaultOnFailure, DefaultOnRequest, DefaultOnResponse, TraceLayer};
 use tracing::{error, warn};
 
-use crate::configuration::{DatabaseSettings, FbConfig, MediaSettings};
+use crate::configuration::{DatabaseSettings, FbAppData, MediaSettings};
 use crate::{
     background_jobs::session_maintenance, configuration::AppConfig, debug::debug_session,
     server::endpoints,
@@ -30,18 +30,18 @@ impl Application {
     pub async fn build(config: AppConfig) -> eyre::Result<Self> {
         let connection_pool = get_connection_pool(&config.database);
 
-        let user_config = CacheBuilder::new(100)
-            .name(&config.caches.user_config.name)
-            .time_to_live(Duration::from_secs(config.caches.user_config.ttl))
+        let fb_app_config = CacheBuilder::new(100)
+            .name(&config.caches.session_data.name)
+            .time_to_live(Duration::from_secs(config.caches.session_data.ttl))
             .build();
 
-        let auth_cache = CacheBuilder::new(100)
-            .name(&config.caches.auth_data.name)
-            .time_to_live(Duration::from_secs(config.caches.auth_data.ttl))
+        let session_cache = CacheBuilder::new(100)
+            .name(&config.caches.session_data.name)
+            .time_to_live(Duration::from_secs(config.caches.session_data.ttl))
             .build();
 
         let mut conn = connection_pool.acquire().await?;
-        session_maintenance(&mut conn, &auth_cache).await;
+        session_maintenance(&mut conn, &session_cache).await;
 
         let media_settings = config.media_settings;
 
@@ -66,12 +66,12 @@ impl Application {
 
         let state = PosterState {
             pool: connection_pool,
-            config_cache: user_config,
-            auth_cache,
+            fb_app_config,
+            session_cache,
             media_settings,
         };
 
-        let server = run(listener, state).await;
+        let server = run(listener, state);
         Ok(Self { port, server })
     }
 
@@ -84,7 +84,7 @@ impl Application {
     }
 }
 
-pub async fn run(listener: TcpListener, state: PosterState) -> Server {
+pub fn run(listener: TcpListener, state: PosterState) -> Server {
     let page_api = Router::new()
         .route("/feed/{page_id}", post(endpoints::page_api::schedule_post))
         .route(
@@ -152,7 +152,6 @@ pub async fn run(listener: TcpListener, state: PosterState) -> Server {
             ),
         );
 
-    // info!("Server listening on http://{url}");
     axum::serve(listener, router)
 }
 
@@ -171,7 +170,7 @@ pub async fn shutdown_signal() {
 #[derive(Debug, Clone)]
 pub struct PosterState {
     pub pool: PgPool,
-    pub config_cache: Cache<String, FbConfig>,
-    pub auth_cache: Cache<String, Authorized>,
+    pub fb_app_config: Cache<String, FbAppData>,
+    pub session_cache: Cache<String, Authorized>,
     pub media_settings: MediaSettings,
 }

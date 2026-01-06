@@ -57,10 +57,8 @@ impl ScheduledTime {
         #[cfg(feature = "time")]
         {
             match OffsetDateTime::parse(s, &Iso8601::DEFAULT) {
-                Ok(dt) => return Self::check_timestamp(dt.unix_timestamp()),
-                Err(_) => {
-                    return Err(ScheduledTimeError::invalid_iso_str());
-                }
+                Ok(dt) => Self::check_timestamp(dt.unix_timestamp()),
+                Err(_) => Err(ScheduledTimeError::invalid_iso_str()),
             }
         }
 

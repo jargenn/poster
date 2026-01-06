@@ -1,8 +1,8 @@
 use axum_extra::extract::cookie::{Cookie, SameSite};
 use uuid::Uuid;
 
-/// Represents the session_id stored in the cookie jar of the client and in the server's database
-/// to be able to search the corresponding session_data stored in the database.
+/// Represents the `session_id` stored in the cookie jar of the client and in the server's database
+/// to be able to search the corresponding `session_data` stored in the database.
 ///
 /// It is intended to be a unique identifier.
 #[derive(Debug, Clone)]
@@ -13,7 +13,7 @@ pub struct SessionId(Uuid);
 pub struct InvalidSessionID;
 
 impl SessionId {
-    /// Creates a new SessionID with a UUID v4
+    /// Creates a new `SessionID` with a UUID v4
     pub fn new() -> Self {
         Self(Uuid::new_v4())
     }

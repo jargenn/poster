@@ -110,7 +110,7 @@ pub async fn session_maintenance(conn: &mut PgConnection, auth_cache: &Cache<Str
             continue;
         };
 
-        match auth_data.verify(&client, &app_id, &app_secret).await {
+        match auth_data.verify(&client, &app_id, app_secret).await {
             Ok(()) => {
                 let expires_at: Option<OffsetDateTime> = auth_data.expires_at.map(Into::into);
                 let last_verified_at: OffsetDateTime = auth_data.last_verified_at.into();
