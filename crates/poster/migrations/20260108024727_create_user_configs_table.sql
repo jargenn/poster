@@ -1,5 +1,6 @@
 CREATE TABLE user_configs (
-    id UUID PRIMARY KEY,
+    id UUID PRIMARY KEY
+        REFERENCES users(user_id) ON DELETE CASCADE,
     app_id TEXT NOT NULL,
     app_secret TEXT NOT NULL,
     app_config_id TEXT NOT NULL,

@@ -42,7 +42,7 @@ async fn scheduling_post_is_indempotent() {
 
     app.submit_post(&headers, &body).await;
     // FIX: Test this case
-    // app.submit_post(&headers, &body).await;
+    app.submit_post(&headers, &body).await;
 }
 
 #[tokio::test]

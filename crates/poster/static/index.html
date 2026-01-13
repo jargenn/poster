@@ -1,0 +1,409 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Workflow Tester</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+        
+        .container {
+            max-width: 900px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+            overflow: hidden;
+        }
+        
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 30px;
+            text-align: center;
+        }
+        
+        .header h1 {
+            font-size: 28px;
+            margin-bottom: 10px;
+        }
+        
+        .header p {
+            opacity: 0.9;
+            font-size: 14px;
+        }
+        
+        .content {
+            padding: 30px;
+        }
+        
+        .section {
+            margin-bottom: 25px;
+            padding: 20px;
+            background: #f8f9fa;
+            border-radius: 8px;
+            border-left: 4px solid #667eea;
+        }
+        
+        .section h3 {
+            color: #333;
+            margin-bottom: 15px;
+            font-size: 18px;
+        }
+        
+        .input-group {
+            margin-bottom: 15px;
+        }
+        
+        .input-group label {
+            display: block;
+            margin-bottom: 5px;
+            color: #555;
+            font-weight: 500;
+            font-size: 14px;
+        }
+        
+        .input-group input,
+        .input-group textarea {
+            width: 100%;
+            padding: 10px;
+            border: 2px solid #e0e0e0;
+            border-radius: 6px;
+            font-size: 14px;
+            font-family: 'Courier New', monospace;
+            transition: border-color 0.3s;
+        }
+        
+        .input-group input:focus,
+        .input-group textarea:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+        
+        .input-group textarea {
+            min-height: 80px;
+            resize: vertical;
+        }
+        
+        button {
+            width: 100%;
+            padding: 12px 24px;
+            border: none;
+            border-radius: 6px;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+        }
+        
+        button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+        }
+        
+        button:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+        
+        .status {
+            padding: 15px;
+            border-radius: 6px;
+            margin-top: 15px;
+            font-size: 14px;
+            display: none;
+        }
+        
+        .status.success {
+            background: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+            display: block;
+        }
+        
+        .status.error {
+            background: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+            display: block;
+        }
+        
+        .status.info {
+            background: #d1ecf1;
+            color: #0c5460;
+            border: 1px solid #bee5eb;
+            display: block;
+        }
+        
+        .response {
+            background: #2d2d2d;
+            color: #f8f8f2;
+            padding: 15px;
+            border-radius: 6px;
+            margin-top: 15px;
+            font-family: 'Courier New', monospace;
+            font-size: 12px;
+            max-height: 300px;
+            overflow-y: auto;
+            white-space: pre-wrap;
+            word-break: break-all;
+            display: none;
+        }
+        
+        .response.show {
+            display: block;
+        }
+        
+        .step-number {
+            display: inline-block;
+            width: 28px;
+            height: 28px;
+            background: #667eea;
+            color: white;
+            border-radius: 50%;
+            text-align: center;
+            line-height: 28px;
+            margin-right: 10px;
+            font-weight: bold;
+        }
+        
+        .workflow-buttons {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 15px;
+            margin-top: 20px;
+        }
+        
+        .btn-secondary {
+            background: #e0e0e0 !important;
+            color: #333 !important;
+        }
+        
+        .btn-secondary:hover {
+            background: #d0d0d0 !important;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🔐 Cookie-Preserving Workflow Tester</h1>
+            <p>Test your multi-step authentication workflow with automatic cookie management</p>
+        </div>
+        
+        <div class="content">
+            <!-- Base URL Configuration -->
+            <div class="section">
+                <h3>⚙️ Configuration</h3>
+                <div class="input-group">
+                    <label>Base URL</label>
+                    <input type="text" id="baseUrl" value="http://localhost:3000" placeholder="http://localhost:3000">
+                </div>
+            </div>
+            
+            <!-- Step 1: Login -->
+            <div class="section">
+                <h3><span class="step-number">1</span>POST /login</h3>
+                <div class="input-group">
+                    <label>Request Body (Form Data - one per line: key=value)</label>
+                    <textarea id="loginPayload">username=admin
+password=Orojackson</textarea>
+                </div>
+                <button onclick="executeLogin()">Execute Login</button>
+                <div id="loginStatus" class="status"></div>
+                <div id="loginResponse" class="response"></div>
+            </div>
+            
+            <!-- Step 2: Config -->
+            <div class="section">
+                <h3><span class="step-number">2</span>POST /config</h3>
+                <div class="input-group">
+                    <label>Request Body (JSON)</label>
+                    <textarea id="configPayload">{"theme": "dark", "notifications": true}</textarea>
+                </div>
+                <button onclick="executeConfig()">Execute Config</button>
+                <div id="configStatus" class="status"></div>
+                <div id="configResponse" class="response"></div>
+            </div>
+            
+            <!-- Step 3: OAuth Login -->
+            <div class="section">
+                <h3><span class="step-number">3</span>GET /facebook/oauth/login</h3>
+                <p style="color: #666; font-size: 13px; margin-bottom: 15px;">
+                    <strong>This will redirect you to Facebook.</strong><br>
+                    After clicking Accept on Facebook, you'll be redirected back to /facebook/oauth/callback automatically.<br>
+                    The callback will use the same session cookies from steps 1 & 2.
+                </p>
+                <button onclick="executeOAuth()">Start OAuth Flow</button>
+                <div id="oauthStatus" class="status"></div>
+                <div id="oauthResponse" class="response"></div>
+            </div>
+            
+            <!-- Quick Actions -->
+            <div class="section">
+                <h3>🚀 Quick Actions</h3>
+                <div class="workflow-buttons">
+                    <button onclick="executeFullWorkflow()">Run Full Workflow</button>
+                    <button class="btn-secondary" onclick="clearAll()">Clear All Results</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        function showStatus(elementId, message, type) {
+            const el = document.getElementById(elementId);
+            el.textContent = message;
+            el.className = `status ${type}`;
+        }
+        
+        function showResponse(elementId, data) {
+            const el = document.getElementById(elementId);
+            el.textContent = JSON.stringify(data, null, 2);
+            el.classList.add('show');
+        }
+        
+        async function executeLogin() {
+            const baseUrl = document.getElementById('baseUrl').value;
+            const payload = document.getElementById('loginPayload').value;
+            
+            showStatus('loginStatus', 'Executing...', 'info');
+            
+            try {
+                // Parse form data from textarea (key=value format)
+                const formData = new URLSearchParams();
+                payload.split('\n').forEach(line => {
+                    const [key, value] = line.trim().split('=');
+                    if (key && value) {
+                        formData.append(key, value);
+                    }
+                });
+                
+                const response = await fetch(`${baseUrl}/login`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/x-www-form-urlencoded',
+                    },
+                    credentials: 'include',
+                    body: formData.toString()
+                });
+                
+                const data = await response.text();
+                let jsonData;
+                try {
+                    jsonData = JSON.parse(data);
+                } catch {
+                    jsonData = { response: data };
+                }
+                
+                if (response.ok) {
+                    showStatus('loginStatus', `✓ Success (${response.status})`, 'success');
+                    showResponse('loginResponse', {
+                        status: response.status,
+                        statusText: response.statusText,
+                        body: jsonData
+                    });
+                } else {
+                    showStatus('loginStatus', `✗ Error (${response.status})`, 'error');
+                    showResponse('loginResponse', {
+                        status: response.status,
+                        statusText: response.statusText,
+                        body: jsonData
+                    });
+                }
+            } catch (error) {
+                showStatus('loginStatus', `✗ Error: ${error.message}`, 'error');
+                showResponse('loginResponse', { error: error.message });
+            }
+        }
+        
+        async function executeConfig() {
+            const baseUrl = document.getElementById('baseUrl').value;
+            const payload = document.getElementById('configPayload').value;
+            
+            showStatus('configStatus', 'Executing...', 'info');
+            
+            try {
+                const response = await fetch(`${baseUrl}/config`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    credentials: 'include',
+                    body: payload
+                });
+                
+                const data = await response.text();
+                let jsonData;
+                try {
+                    jsonData = JSON.parse(data);
+                } catch {
+                    jsonData = { response: data };
+                }
+                
+                if (response.ok) {
+                    showStatus('configStatus', `✓ Success (${response.status})`, 'success');
+                    showResponse('configResponse', {
+                        status: response.status,
+                        statusText: response.statusText,
+                        body: jsonData
+                    });
+                } else {
+                    showStatus('configStatus', `✗ Error (${response.status})`, 'error');
+                    showResponse('configResponse', {
+                        status: response.status,
+                        statusText: response.statusText,
+                        body: jsonData
+                    });
+                }
+            } catch (error) {
+                showStatus('configStatus', `✗ Error: ${error.message}`, 'error');
+                showResponse('configResponse', { error: error.message });
+            }
+        }
+        
+        async function executeOAuth() {
+            const baseUrl = document.getElementById('baseUrl').value;
+            
+            showStatus('oauthStatus', 'Redirecting to Facebook...', 'info');
+            
+            // Simply navigate to the OAuth URL - let the browser handle the full flow
+            window.location.href = `${baseUrl}/facebook/oauth/login`;
+        }
+        
+        async function executeFullWorkflow() {
+            clearAll();
+            await executeLogin();
+            await new Promise(resolve => setTimeout(resolve, 500));
+            await executeConfig();
+            
+            // Show a message before OAuth redirect
+            showStatus('oauthStatus', 'Ready to start OAuth flow. Click "Start OAuth Flow" when ready.', 'info');
+        }
+        
+        function clearAll() {
+            ['loginStatus', 'configStatus', 'oauthStatus'].forEach(id => {
+                document.getElementById(id).className = 'status';
+            });
+            ['loginResponse', 'configResponse', 'oauthResponse'].forEach(id => {
+                const el = document.getElementById(id);
+                el.classList.remove('show');
+                el.textContent = '';
+            });
+        }
+    </script>
+</body>
+</html>

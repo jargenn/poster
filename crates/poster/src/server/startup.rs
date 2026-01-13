@@ -3,6 +3,7 @@ use axum::routing::post;
 use axum::serve::Serve;
 use axum::{Extension, body::Body, http, routing::get};
 use facebook_graph_api::auth::Authorized;
+use http::{HeaderValue, Method, header};
 use moka::future::{Cache, CacheBuilder};
 use reqwest::Url;
 use sqlx::PgPool;
@@ -13,7 +14,10 @@ use tokio::signal;
 use tokio::task::{AbortHandle, JoinHandle};
 use tower::ServiceBuilder;
 use tower_http::LatencyUnit;
+use tower_http::cors::{AllowOrigin, CorsLayer};
+use tower_http::services::ServeDir;
 use tower_http::trace::{DefaultOnFailure, DefaultOnRequest, DefaultOnResponse, TraceLayer};
+use tower_sessions::cookie::SameSite;
 use tower_sessions::{ExpiredDeletion, Expiry, SessionManagerLayer};
 use tower_sessions_sqlx_store::PostgresStore;
 use tracing::{error, info, warn};
@@ -82,9 +86,19 @@ impl Application {
                 .continuously_delete_expired(tokio::time::Duration::from_secs(3600)),
         );
 
-        let session_layer = SessionManagerLayer::new(session_store)
-            // .with_secure(false)
-            .with_expiry(Expiry::OnInactivity(time::Duration::seconds(10)));
+        let session_layer = {
+            if cfg!(debug_assertions) {
+                SessionManagerLayer::new(session_store)
+                    .with_secure(false)
+                    .with_same_site(SameSite::Lax)
+                    .with_expiry(Expiry::OnInactivity(time::Duration::seconds(10)))
+            } else {
+                SessionManagerLayer::new(session_store)
+                    .with_secure(true)
+                    .with_same_site(SameSite::Lax)
+                    .with_expiry(Expiry::OnInactivity(time::Duration::seconds(10)))
+            }
+        };
 
         let server = run(listener, state, session_layer);
 
@@ -137,16 +151,18 @@ pub fn run(
 
     let facebook = Router::new()
         .nest("/page_api", page_api)
-        .route("/{config_id}/oauth/login", get(routes::fb_login))
-        .route("/oauth/callback/{config_id}", get(routes::fb_callback));
+        .route("/oauth/login", get(routes::fb_login))
+        .route("/oauth/callback", get(routes::fb_callback));
+
+    let static_files = ServeDir::new("static").append_index_html_on_directories(true);
 
     let router = Router::new()
         .nest("/facebook", facebook)
         .route("/config", post(routes::config::save))
         .route("/login", post(routes::login))
         .route("/health", get(routes::health::health_check))
+        .fallback_service(static_files)
         .with_state(state)
-        .layer(session_layer)
         .layer(Extension(
             reqwest::ClientBuilder::new()
                 .timeout(Duration::from_secs(5))
@@ -179,6 +195,11 @@ pub fn run(
                     ),
             ),
         );
+
+    #[cfg(debug_assertions)]
+    let router = router.layer(CorsLayer::very_permissive());
+
+    let router = router.layer(session_layer);
 
     axum::serve(listener, router)
 }

@@ -1,10 +1,12 @@
 use axum::extract::{Json, State};
+use eyre::OptionExt;
 use http::StatusCode;
 use serde_json::{Value, json};
 use tracing::{debug, instrument};
 
 use crate::{
-    configuration::UserConfig, error::Error, server::PosterState, session_state::TypedSession,
+    authentication::AuthError, configuration::UserConfig, error::Error, server::PosterState,
+    session_state::TypedSession,
 };
 
 /// Saves the user config in the database and eagerly loads it into the cache.
@@ -20,18 +22,19 @@ pub async fn save(
 ) -> Result<(StatusCode, Json<Value>), Error> {
     let mut conn = state.pool.acquire().await.map_err(Error::Database)?;
 
-    let id = session
+    let user_id = session
         .get_user_id()
         .await
-        .expect("Should be able to find a `user_id")
-        .expect("`user_id` was empty");
+        .map_err(Error::SessionError)?
+        .ok_or_eyre("`user_id` session is empty")
+        .map_err(AuthError::UnexpectedError)?;
 
     let config_data = &payload.config_data;
     let app_id = &config_data.app_id;
 
     sqlx::query!(
-        "INSERT INTO user_configs(id, app_id, app_secret,app_config_id, redirect_url, description) VALUES ($1,$2,$3,$4,$5,$6);",
-        id,
+        "INSERT INTO user_configs(id, app_id, app_secret, app_config_id, redirect_url, description) VALUES ($1,$2,$3,$4,$5,$6);",
+        user_id,
         app_id,
         config_data.app_secret,
         config_data.app_config_id,
@@ -43,12 +46,12 @@ pub async fn save(
 
     state
         .fb_app_config
-        .insert(id.to_string(), payload.config_data)
+        .insert(user_id.to_string(), payload.config_data)
         .await;
 
     debug!("config stored in cache");
 
-    let res = json!({"message:": "Config saved!", "config_key": id.to_string()});
+    let res = json!({"message:": "Config saved!"});
 
     Ok((StatusCode::ACCEPTED, Json(res)))
 }

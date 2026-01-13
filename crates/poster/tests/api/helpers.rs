@@ -54,7 +54,6 @@ impl TestUser {
         .unwrap()
         .to_string();
 
-
         sqlx::query!(
             "INSERT INTO users (user_id, username, password_hash)
                 VALUES ($1, $2, $3)",
@@ -100,6 +99,15 @@ impl TestApp {
         self.client
             .post(format!("{}/login", self.address))
             .form(body)
+            .send()
+            .await
+            .expect("Failed to send the request to the server during testing")
+    }
+
+    pub async fn post_config(&self, body: &serde_json::Value) -> reqwest::Response {
+        self.client
+            .post(format!("{}/config", self.address))
+            .json(body)
             .send()
             .await
             .expect("Failed to send the request to the server during testing")

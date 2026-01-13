@@ -15,7 +15,7 @@ time = { version = "0.3.44", features = ["formatting", "serde"] }
 tokio = { version = "1.48.0", features = ["full"] }
 tower = "0.5.2"
 tracing.workspace = true
-tower-http = { version = "0.6.8", features = ["normalize-path", "trace"] }
+tower-http = { version = "0.6.8", features = ["cors", "fs", "normalize-path", "trace"] }
 tracing-bunyan-formatter = "0.3.10"
 tracing-subscriber = { version = "0.3.22", features = ["env-filter"] }
 uuid = { workspace = true, features = ["serde"] }

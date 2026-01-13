@@ -15,12 +15,12 @@ use tracing::instrument;
 
 use crate::{
     IdempotencyKey,
-    authentication::{self, AuthError, Credentials, validate_credentials},
+    authentication::{self, Credentials},
     error::Error,
     extractors::Auth,
     server::PosterState,
     session_state::TypedSession,
-    storage::db::{self, session},
+    storage::db::{self},
 };
 use facebook_graph_api::{
     FacebookPost, Input,
