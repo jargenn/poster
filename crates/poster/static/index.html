@@ -1,5 +1,7 @@
+<!-- Made by yours truly, chatgippity -->
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -10,200 +12,176 @@
             padding: 0;
             box-sizing: border-box;
         }
-        
+
         body {
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+            background: #fff;
+            color: #000;
             min-height: 100vh;
-            padding: 20px;
+            padding: 24px;
         }
-        
+
         .container {
             max-width: 900px;
             margin: 0 auto;
-            background: white;
-            border-radius: 12px;
-            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
-            overflow: hidden;
+            border: 2px solid #000;
         }
-        
+
         .header {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            color: white;
-            padding: 30px;
+            border-bottom: 2px solid #000;
+            padding: 20px;
             text-align: center;
         }
-        
+
         .header h1 {
-            font-size: 28px;
-            margin-bottom: 10px;
+            font-size: 20px;
+            font-weight: 700;
+            letter-spacing: 0.5px;
         }
-        
+
         .header p {
-            opacity: 0.9;
-            font-size: 14px;
+            font-size: 12px;
+            margin-top: 6px;
         }
-        
+
         .content {
-            padding: 30px;
-        }
-        
-        .section {
-            margin-bottom: 25px;
             padding: 20px;
-            background: #f8f9fa;
-            border-radius: 8px;
-            border-left: 4px solid #667eea;
         }
-        
+
+        .section {
+            margin-bottom: 24px;
+            padding: 16px;
+            border: 2px solid #000;
+        }
+
         .section h3 {
-            color: #333;
-            margin-bottom: 15px;
-            font-size: 18px;
+            font-size: 14px;
+            font-weight: 700;
+            margin-bottom: 12px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
         }
-        
+
         .input-group {
-            margin-bottom: 15px;
+            margin-bottom: 14px;
         }
-        
+
         .input-group label {
             display: block;
-            margin-bottom: 5px;
-            color: #555;
-            font-weight: 500;
-            font-size: 14px;
+            font-size: 12px;
+            margin-bottom: 6px;
         }
-        
+
         .input-group input,
         .input-group textarea {
             width: 100%;
             padding: 10px;
-            border: 2px solid #e0e0e0;
-            border-radius: 6px;
-            font-size: 14px;
-            font-family: 'Courier New', monospace;
-            transition: border-color 0.3s;
+            font-size: 13px;
+            font-family: inherit;
+            border: 2px solid #000;
+            background: #fff;
+            color: #000;
         }
-        
+
         .input-group input:focus,
         .input-group textarea:focus {
             outline: none;
-            border-color: #667eea;
+            background: #f5f5f5;
         }
-        
+
+        /* Bigger payload editors */
         .input-group textarea {
-            min-height: 80px;
+            min-height: 160px;
             resize: vertical;
+            line-height: 1.4;
         }
-        
+
         button {
             width: 100%;
-            padding: 12px 24px;
-            border: none;
-            border-radius: 6px;
-            font-size: 14px;
-            font-weight: 600;
+            padding: 10px;
+            border: 2px solid #000;
+            background: #fff;
+            color: #000;
+            font-size: 13px;
+            font-weight: 700;
             cursor: pointer;
-            transition: all 0.3s;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            color: white;
         }
-        
+
         button:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+            background: #000;
+            color: #fff;
         }
-        
+
         button:disabled {
-            opacity: 0.5;
+            opacity: 0.4;
             cursor: not-allowed;
         }
-        
+
+        .btn-secondary {
+            background: #fff !important;
+        }
+
+        .btn-secondary:hover {
+            background: #000 !important;
+            color: #fff !important;
+        }
+
         .status {
-            padding: 15px;
-            border-radius: 6px;
-            margin-top: 15px;
-            font-size: 14px;
-            display: none;
-        }
-        
-        .status.success {
-            background: #d4edda;
-            color: #155724;
-            border: 1px solid #c3e6cb;
-            display: block;
-        }
-        
-        .status.error {
-            background: #f8d7da;
-            color: #721c24;
-            border: 1px solid #f5c6cb;
-            display: block;
-        }
-        
-        .status.info {
-            background: #d1ecf1;
-            color: #0c5460;
-            border: 1px solid #bee5eb;
-            display: block;
-        }
-        
-        .response {
-            background: #2d2d2d;
-            color: #f8f8f2;
-            padding: 15px;
-            border-radius: 6px;
-            margin-top: 15px;
-            font-family: 'Courier New', monospace;
+            margin-top: 12px;
+            padding: 10px;
+            border: 2px solid #000;
             font-size: 12px;
-            max-height: 300px;
-            overflow-y: auto;
-            white-space: pre-wrap;
-            word-break: break-all;
             display: none;
         }
-        
+
+        .status.success,
+        .status.error,
+        .status.info {
+            display: block;
+        }
+
+        .response {
+            margin-top: 12px;
+            padding: 12px;
+            border: 2px dashed #000;
+            font-size: 12px;
+            white-space: pre-wrap;
+            max-height: 320px;
+            overflow-y: auto;
+            display: none;
+        }
+
         .response.show {
             display: block;
         }
-        
+
         .step-number {
-            display: inline-block;
-            width: 28px;
-            height: 28px;
-            background: #667eea;
-            color: white;
-            border-radius: 50%;
-            text-align: center;
-            line-height: 28px;
-            margin-right: 10px;
-            font-weight: bold;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 22px;
+            height: 22px;
+            border: 2px solid #000;
+            font-size: 11px;
+            font-weight: 700;
         }
-        
+
         .workflow-buttons {
             display: grid;
             grid-template-columns: 1fr 1fr;
-            gap: 15px;
-            margin-top: 20px;
-        }
-        
-        .btn-secondary {
-            background: #e0e0e0 !important;
-            color: #333 !important;
-        }
-        
-        .btn-secondary:hover {
-            background: #d0d0d0 !important;
+            gap: 12px;
         }
     </style>
 </head>
+
 <body>
     <div class="container">
         <div class="header">
             <h1>🔐 Cookie-Preserving Workflow Tester</h1>
             <p>Test your multi-step authentication workflow with automatic cookie management</p>
         </div>
-        
+
         <div class="content">
             <!-- Base URL Configuration -->
             <div class="section">
@@ -213,20 +191,20 @@
                     <input type="text" id="baseUrl" value="http://localhost:3000" placeholder="http://localhost:3000">
                 </div>
             </div>
-            
+
             <!-- Step 1: Login -->
             <div class="section">
                 <h3><span class="step-number">1</span>POST /login</h3>
                 <div class="input-group">
                     <label>Request Body (Form Data - one per line: key=value)</label>
                     <textarea id="loginPayload">username=admin
-password=Orojackson</textarea>
+                        password=Orojackson</textarea>
                 </div>
                 <button onclick="executeLogin()">Execute Login</button>
                 <div id="loginStatus" class="status"></div>
                 <div id="loginResponse" class="response"></div>
             </div>
-            
+
             <!-- Step 2: Config -->
             <div class="section">
                 <h3><span class="step-number">2</span>POST /config</h3>
@@ -238,20 +216,48 @@ password=Orojackson</textarea>
                 <div id="configStatus" class="status"></div>
                 <div id="configResponse" class="response"></div>
             </div>
-            
+
             <!-- Step 3: OAuth Login -->
             <div class="section">
                 <h3><span class="step-number">3</span>GET /facebook/oauth/login</h3>
                 <p style="color: #666; font-size: 13px; margin-bottom: 15px;">
                     <strong>This will redirect you to Facebook.</strong><br>
-                    After clicking Accept on Facebook, you'll be redirected back to /facebook/oauth/callback automatically.<br>
+                    After clicking Accept on Facebook, you'll be redirected back to /facebook/oauth/callback
+                    automatically.<br>
                     The callback will use the same session cookies from steps 1 & 2.
                 </p>
                 <button onclick="executeOAuth()">Start OAuth Flow</button>
                 <div id="oauthStatus" class="status"></div>
                 <div id="oauthResponse" class="response"></div>
             </div>
-            
+
+            <!-- Step 4: Facebook Page Feed -->
+            <div class="section">
+                <h3><span class="step-number">4</span>POST Facebook Page Feed</h3>
+
+                <div class="input-group">
+                    <label>Endpoint Path</label>
+                    <input type="text" id="pageFeedPath" value="/facebook/page_api/feed/353891654631331">
+                </div>
+
+                <div class="input-group">
+                    <label>Request Body (JSON)</label>
+                    <textarea id="pageFeedPayload">[
+                        {
+                        "content": "solo un miembro en la lista",
+                        "media": [
+                        "https://pub-4f1f80e5179d47208b7c305470c72eac.r2.dev/Screenshot%20From%202026-01-07%2001-43-31.png"
+                        ]
+                        }
+                        ]</textarea>
+                </div>
+
+                <button onclick="executePageFeed()">Execute Page Feed</button>
+
+                <div id="pageFeedStatus" class="status"></div>
+                <div id="pageFeedResponse" class="response"></div>
+            </div>
+
             <!-- Quick Actions -->
             <div class="section">
                 <h3>🚀 Quick Actions</h3>
@@ -269,19 +275,19 @@ password=Orojackson</textarea>
             el.textContent = message;
             el.className = `status ${type}`;
         }
-        
+
         function showResponse(elementId, data) {
             const el = document.getElementById(elementId);
             el.textContent = JSON.stringify(data, null, 2);
             el.classList.add('show');
         }
-        
+
         async function executeLogin() {
             const baseUrl = document.getElementById('baseUrl').value;
             const payload = document.getElementById('loginPayload').value;
-            
+
             showStatus('loginStatus', 'Executing...', 'info');
-            
+
             try {
                 // Parse form data from textarea (key=value format)
                 const formData = new URLSearchParams();
@@ -291,7 +297,7 @@ password=Orojackson</textarea>
                         formData.append(key, value);
                     }
                 });
-                
+
                 const response = await fetch(`${baseUrl}/login`, {
                     method: 'POST',
                     headers: {
@@ -300,15 +306,15 @@ password=Orojackson</textarea>
                     credentials: 'include',
                     body: formData.toString()
                 });
-                
+
                 const data = await response.text();
                 let jsonData;
                 try {
                     jsonData = JSON.parse(data);
                 } catch {
-                    jsonData = { response: data };
+                    jsonData = {response: data};
                 }
-                
+
                 if (response.ok) {
                     showStatus('loginStatus', `✓ Success (${response.status})`, 'success');
                     showResponse('loginResponse', {
@@ -326,16 +332,16 @@ password=Orojackson</textarea>
                 }
             } catch (error) {
                 showStatus('loginStatus', `✗ Error: ${error.message}`, 'error');
-                showResponse('loginResponse', { error: error.message });
+                showResponse('loginResponse', {error: error.message});
             }
         }
-        
+
         async function executeConfig() {
             const baseUrl = document.getElementById('baseUrl').value;
             const payload = document.getElementById('configPayload').value;
-            
+
             showStatus('configStatus', 'Executing...', 'info');
-            
+
             try {
                 const response = await fetch(`${baseUrl}/config`, {
                     method: 'POST',
@@ -345,15 +351,15 @@ password=Orojackson</textarea>
                     credentials: 'include',
                     body: payload
                 });
-                
+
                 const data = await response.text();
                 let jsonData;
                 try {
                     jsonData = JSON.parse(data);
                 } catch {
-                    jsonData = { response: data };
+                    jsonData = {response: data};
                 }
-                
+
                 if (response.ok) {
                     showStatus('configStatus', `✓ Success (${response.status})`, 'success');
                     showResponse('configResponse', {
@@ -371,29 +377,29 @@ password=Orojackson</textarea>
                 }
             } catch (error) {
                 showStatus('configStatus', `✗ Error: ${error.message}`, 'error');
-                showResponse('configResponse', { error: error.message });
+                showResponse('configResponse', {error: error.message});
             }
         }
-        
+
         async function executeOAuth() {
             const baseUrl = document.getElementById('baseUrl').value;
-            
+
             showStatus('oauthStatus', 'Redirecting to Facebook...', 'info');
-            
+
             // Simply navigate to the OAuth URL - let the browser handle the full flow
             window.location.href = `${baseUrl}/facebook/oauth/login`;
         }
-        
+
         async function executeFullWorkflow() {
             clearAll();
             await executeLogin();
             await new Promise(resolve => setTimeout(resolve, 500));
             await executeConfig();
-            
+
             // Show a message before OAuth redirect
             showStatus('oauthStatus', 'Ready to start OAuth flow. Click "Start OAuth Flow" when ready.', 'info');
         }
-        
+
         function clearAll() {
             ['loginStatus', 'configStatus', 'oauthStatus'].forEach(id => {
                 document.getElementById(id).className = 'status';
@@ -404,6 +410,50 @@ password=Orojackson</textarea>
                 el.textContent = '';
             });
         }
+
+        async function executePageFeed() {
+            const baseUrl = document.getElementById('baseUrl').value;
+            const path = document.getElementById('pageFeedPath').value;
+            const payload = document.getElementById('pageFeedPayload').value;
+
+            showStatus('pageFeedStatus', 'Executing...', 'info');
+
+            try {
+                const response = await fetch(`${baseUrl}${path}`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    credentials: 'include',
+                    body: payload
+                });
+
+                const data = await response.text();
+                let jsonData;
+                try {
+                    jsonData = JSON.parse(data);
+                } catch {
+                    jsonData = {response: data};
+                }
+
+                if (response.ok) {
+                    showStatus('pageFeedStatus', `✓ Success (${response.status})`, 'success');
+                } else {
+                    showStatus('pageFeedStatus', `✗ Error (${response.status})`, 'error');
+                }
+
+                showResponse('pageFeedResponse', {
+                    status: response.status,
+                    statusText: response.statusText,
+                    body: jsonData
+                });
+
+            } catch (error) {
+                showStatus('pageFeedStatus', `✗ Error: ${error.message}`, 'error');
+                showResponse('pageFeedResponse', {error: error.message});
+            }
+        }
     </script>
 </body>
+
 </html>

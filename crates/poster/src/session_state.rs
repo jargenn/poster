@@ -4,7 +4,7 @@ use tower_sessions::{Session, session::Error};
 use tracing::instrument;
 use uuid::Uuid;
 
-pub struct TypedSession(Session);
+pub struct TypedSession(pub Session);
 
 impl TypedSession {
     const USER_ID_KEY: &'static str = "user_id";

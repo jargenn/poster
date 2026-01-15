@@ -113,7 +113,34 @@ pub fn setup_database() -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
-/// Helper function to check if a command exists
+fn start_jaeger() -> Result<(), Box<dyn std::error::Error>> {
+    let status = Command::new("docker")
+        .args([
+            "run",
+            "-d",
+            "--name",
+            "jaeger",
+            "-p",
+            "4318:4138",
+            "-p",
+            "16686:16686",
+            "jaegertracing/all-in-one:latest",
+        ])
+        .status()?;
+
+    if !status.success() {
+        return Err("Failed to start Docker container".into());
+    }
+
+    Ok(())
+}
+
+fn setup_dev_env() -> Result<(), Box<dyn std::error::Error>> {
+    start_jaeger()?;
+    setup_database()?;
+    Ok(())
+}
+
 fn command_exists(cmd: &str) -> bool {
     Command::new("sh")
         .arg("-c")
@@ -132,7 +159,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     match params.next() {
         None => println!("No command given"),
         Some(cmd) => match cmd.as_str() {
-            "start_db" => setup_database()?,
+            "setup" => setup_dev_env()?,
+            "db" => setup_database()?,
+            "tracing" => start_jaeger()?,
             _ => println!("Unknown command {cmd}"),
         },
     };

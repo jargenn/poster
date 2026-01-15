@@ -3048,7 +3048,6 @@ dependencies = [
  "opentelemetry_sdk",
  "pretty_assertions",
  "quickcheck",
- "quickcheck_macros",
  "reqwest",
  "secrecy",
  "serde",

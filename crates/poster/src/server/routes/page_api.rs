@@ -145,11 +145,12 @@ fn basic_auth(headers: &HeaderMap) -> eyre::Result<Credentials> {
 #[axum::debug_handler]
 #[instrument(
     "Scheduling posts",
-    skip(state,session, payload, idempotency_key),
+    skip(state,session, payload, ),
+    // skip(state,session, payload, idempotency_key),
     fields(page_id = %page_id.bold())
 )]
 pub async fn schedule_posts(
-    TypedHeader(idempotency_key): TypedHeader<IdempotencyKey>,
+    // TypedHeader(idempotency_key): TypedHeader<IdempotencyKey>,
     session: TypedSession,
     Path(page_id): Path<String>,
     State(state): State<PosterState>,

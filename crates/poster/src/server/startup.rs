@@ -85,18 +85,23 @@ impl Application {
                 .clone()
                 .continuously_delete_expired(tokio::time::Duration::from_secs(3600)),
         );
-
         let session_layer = {
             if cfg!(debug_assertions) {
                 SessionManagerLayer::new(session_store)
+                    .with_name("poster.sid") // Add explicit cookie name
                     .with_secure(false)
                     .with_same_site(SameSite::Lax)
-                    .with_expiry(Expiry::OnInactivity(time::Duration::seconds(10)))
+                    .with_http_only(true) // Ensure HttpOnly is set
+                    .with_path("/") // Explicitly set path
+                    .with_expiry(Expiry::OnInactivity(time::Duration::seconds(600))) // 10 minutes for testing
             } else {
                 SessionManagerLayer::new(session_store)
+                    .with_name("poster.sid")
                     .with_secure(true)
                     .with_same_site(SameSite::Lax)
-                    .with_expiry(Expiry::OnInactivity(time::Duration::seconds(10)))
+                    .with_http_only(true)
+                    .with_path("/")
+                    .with_expiry(Expiry::OnInactivity(time::Duration::seconds(600)))
             }
         };
 
@@ -154,7 +159,7 @@ pub fn run(
         .route("/oauth/login", get(routes::fb_login))
         .route("/oauth/callback", get(routes::fb_callback));
 
-    let static_files = ServeDir::new("static").append_index_html_on_directories(true);
+    let static_files = ServeDir::new("static");
 
     let router = Router::new()
         .nest("/facebook", facebook)

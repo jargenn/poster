@@ -38,7 +38,6 @@ moka = { version = "0.12.12", features = ["future", "log"] }
 base64 = "0.22.1"
 image = "0.25.9"
 aws-sdk-s3 = "1.119.0"
-aws-config = { version = "1.1.7", features = ["behavior-version-latest"] }
 opentelemetry = "0.31.0"
 tracing-opentelemetry = "0.32.0"
 opentelemetry-jaeger-propagator = "0.31.0"
@@ -47,6 +46,7 @@ opentelemetry_sdk = { version = "0.31.0", features = ["rt-tokio"] }
 argon2 = "0.5.3"
 tower-sessions = "0.14.0"
 tower-sessions-sqlx-store = { version = "0.15.0", features = ["postgres"] }
+aws-config = { version = "1.8.12", features = ["behavior-version-latest"] }
 
 
 [dev-dependencies]
@@ -55,4 +55,3 @@ expect-test = "1.5.1"
 wiremock = "0.6.5"
 pretty_assertions = "1.4.1"
 quickcheck = "1.0.3"
-quickcheck_macros = "1.1.0"
