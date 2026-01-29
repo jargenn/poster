@@ -20,7 +20,7 @@ tracing-bunyan-formatter = "0.3.10"
 tracing-subscriber = { version = "0.3.22", features = ["env-filter"] }
 uuid = { workspace = true, features = ["serde"] }
 serde.workspace = true
-
+opentelemetry-otlp = {version = "0.31.0", features = ["serialize"] }
 facebook_graph_api = { path = "../facebook_graph_api/", features = ["axum","time"]}
 thiserror = "2.0.17"
 serde_json.workspace = true
@@ -40,8 +40,7 @@ image = "0.25.9"
 aws-sdk-s3 = "1.119.0"
 opentelemetry = "0.31.0"
 tracing-opentelemetry = "0.32.0"
-opentelemetry-jaeger-propagator = "0.31.0"
-opentelemetry-otlp = "0.31.0"
+# opentelemetry-jaeger-propagator = "0.31.0"
 opentelemetry_sdk = { version = "0.31.0", features = ["rt-tokio"] }
 argon2 = "0.5.3"
 tower-sessions = "0.14.0"
@@ -54,4 +53,3 @@ tempfile = "3.24.0"
 expect-test = "1.5.1"
 wiremock = "0.6.5"
 pretty_assertions = "1.4.1"
-quickcheck = "1.0.3"

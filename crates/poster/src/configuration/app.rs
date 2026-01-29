@@ -1,7 +1,9 @@
 use eyre::Result;
 use serde::Deserialize;
 
-use crate::configuration::{CacheStore, database::DatabaseSettings, media::MediaSettings};
+use crate::configuration::{
+    CacheStore, TracingSettings, database::DatabaseSettings, media::MediaSettings,
+};
 
 #[derive(Debug, Clone, Deserialize)]
 pub struct AppConfig {
@@ -12,6 +14,7 @@ pub struct AppConfig {
     #[serde(rename = "caches")]
     pub caches: CacheStore,
     pub facebook_uri: String,
+    pub tracing: TracingSettings,
 }
 
 impl AppConfig {

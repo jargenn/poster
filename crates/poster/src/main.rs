@@ -7,9 +7,8 @@ use tracing::error;
 #[tokio::main]
 async fn main() -> Result<()> {
     color_eyre::install()?;
-    telemetry::init_tracing();
-
     let config = AppConfig::get_config()?;
+    telemetry::init_tracing(&config);
     dbg!(&config);
 
     let server = Application::build(config).await?;

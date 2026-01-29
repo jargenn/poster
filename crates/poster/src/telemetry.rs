@@ -1,5 +1,13 @@
+use opentelemetry::global;
+use opentelemetry_otlp::WithHttpConfig;
+use secrecy::ExposeSecret as _;
+use std::collections::HashMap;
+use std::time::Duration;
+
 use opentelemetry::trace::TracerProvider;
-use opentelemetry_otlp::{Protocol, WithExportConfig};
+use opentelemetry_otlp::{SpanExporterBuilder, WithExportConfig};
+use opentelemetry_sdk::Resource;
+use opentelemetry_sdk::trace::{BatchConfigBuilder, BatchSpanProcessor, SdkTracerProvider};
 use tokio::task::JoinHandle;
 use tracing::subscriber::set_global_default;
 use tracing_bunyan_formatter::{BunyanFormattingLayer, JsonStorageLayer};
@@ -7,36 +15,58 @@ use tracing_log::LogTracer;
 use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::{EnvFilter, Registry};
 
-pub fn init_tracing() {
+use crate::configuration::AppConfig;
+
+pub fn init_tracing(config: &AppConfig) {
     LogTracer::init().expect("Failed to set logger");
 
-    let opentelemetry_layer = {
-        opentelemetry::global::set_text_map_propagator(
-            opentelemetry_jaeger_propagator::Propagator::new(),
+    let honeycomb_layer = {
+        let mut headers = HashMap::new();
+        headers.insert(
+            "x-honeycomb-team".to_owned(),
+            config.tracing.api_key.expose_secret().to_string(),
         );
 
-        let otlp_exporter = opentelemetry_otlp::SpanExporter::builder()
+        match SpanExporterBuilder::default()
             .with_http()
-            .with_endpoint("http://localhost:4318/v1/traces")
-            .with_protocol(Protocol::HttpBinary)
+            .with_protocol(config.tracing.protocol)
+            .with_headers(headers)
+            .with_endpoint(config.tracing.endpoint.clone())
             .build()
-            .expect("Failed to build the SpanExporter");
-        let batch_processor =
-            opentelemetry_sdk::trace::BatchSpanProcessor::builder(otlp_exporter).build();
+        {
+            Ok(otlp_exporter) => {
+                let batch_processor = BatchSpanProcessor::builder(otlp_exporter)
+                    .with_batch_config(
+                        BatchConfigBuilder::default()
+                            .with_max_export_batch_size(512)
+                            // .with_max_export_timeout(Duration::from_secs(30))
+                            .with_scheduled_delay(Duration::from_millis(500))
+                            .build(),
+                    )
+                    .build();
 
-        let tracer_provider = opentelemetry_sdk::trace::SdkTracerProvider::builder()
-            .with_span_processor(batch_processor)
-            .with_resource(
-                opentelemetry_sdk::Resource::builder()
-                    .with_service_name("poster")
-                    .build(),
-            )
-            .build();
+                let provider = SdkTracerProvider::builder()
+                    .with_span_processor(batch_processor)
+                    .with_resource(
+                        Resource::builder()
+                            .with_service_name(config.tracing.service_name.clone())
+                            .build(),
+                    )
+                    .build();
 
-        opentelemetry::global::set_tracer_provider(tracer_provider.clone());
+                global::set_tracer_provider(provider.clone());
 
-        let tracer = tracer_provider.tracer("poster");
-        tracing_opentelemetry::layer().with_tracer(tracer)
+                Some(tracing_opentelemetry::layer().with_tracer(provider.tracer("poster")))
+            }
+            Err(err) => {
+                tracing::warn!(
+                    target: "telemetry",
+                    error = %err,
+                    "Telemetry exporter disabled"
+                );
+                None
+            }
+        }
     };
 
     let env_filter = EnvFilter::try_from_default_env().unwrap_or_else(|_| {
@@ -51,7 +81,7 @@ pub fn init_tracing() {
 
     let subscriber = Registry::default()
         .with(env_filter)
-        .with(opentelemetry_layer)
+        .with(honeycomb_layer)
         .with(JsonStorageLayer)
         .with(formatting_layer);
 
