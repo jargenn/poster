@@ -1,7 +1,7 @@
 use argon2::{Argon2, PasswordHash, PasswordVerifier as _};
 use eyre::Context as _;
 use secrecy::{ExposeSecret as _, SecretString};
-use sqlx::PgPool;
+use sqlx::SqlitePool;
 
 use crate::telemetry;
 
@@ -22,7 +22,7 @@ pub struct Credentials {
 #[tracing::instrument(name = "Validate credentials", skip(credentials, pool))]
 pub async fn validate_credentials(
     credentials: Credentials,
-    pool: &PgPool,
+    pool: &SqlitePool,
 ) -> Result<uuid::Uuid, AuthError> {
     let mut user_id = None;
     let mut expected_password_hash = SecretString::new(
@@ -56,7 +56,7 @@ pub async fn validate_credentials(
 #[tracing::instrument(name = "Get stored credentials", skip(username, pool))]
 async fn get_stored_credentials(
     username: &str,
-    pool: &PgPool,
+    pool: &SqlitePool,
 ) -> Result<Option<(uuid::Uuid, SecretString)>, eyre::Error> {
     let row = sqlx::query!(
         r#"
@@ -69,7 +69,11 @@ async fn get_stored_credentials(
     .fetch_optional(pool)
     .await
     .context("Failed to perform a query to retrieve stored credentials.")?
-    .map(|row| (row.user_id, SecretString::new(row.password_hash.into())));
+    .map(|row| {
+        let user_id = uuid::Uuid::parse_str(&row.user_id.expect("Stored user has no UUID"))
+            .expect("Invalid stored user UUID");
+        (user_id, SecretString::new(row.password_hash.into()))
+    });
     Ok(row)
 }
 

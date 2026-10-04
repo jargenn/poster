@@ -1,7 +1,7 @@
 use color_eyre::owo_colors::OwoColorize;
 use eyre::Result;
 use facebook_graph_api::auth::Authorized;
-use sqlx::PgConnection;
+use sqlx::SqliteConnection;
 use time::OffsetDateTime;
 use tracing::{debug, error, info, instrument};
 use uuid::Uuid;
@@ -15,13 +15,14 @@ use uuid::Uuid;
     )
 )]
 pub async fn store_oauth_data(
-    conn: &mut PgConnection,
+    conn: &mut SqliteConnection,
     user_id: &Uuid,
     auth: &Authorized,
 ) -> Result<()> {
     info!("storing auth session");
 
     let expires_at = auth.expires_at.map(OffsetDateTime::from);
+    let user_id = user_id.to_string();
 
     sqlx::query!(
         "INSERT INTO facebook_auth_data (
@@ -50,16 +51,17 @@ pub async fn store_oauth_data(
     skip(conn),
     fields(user_id= %user_id.bold())
 )]
-pub async fn load_session(conn: &mut PgConnection, user_id: &Uuid) -> Result<Option<Authorized>> {
+pub async fn load_session(conn: &mut SqliteConnection, user_id: &Uuid) -> Result<Option<Authorized>> {
     debug!("searching for access_token in the database");
+    let user_id = user_id.to_string();
 
     #[derive(Debug, sqlx::FromRow)]
     struct SessionRow {
         fb_user_access_token: String,
         fb_app_id: String,
         fb_user_id: String,
-        expires_at: Option<OffsetDateTime>,
-        last_verified_at: OffsetDateTime,
+        expires_at: Option<String>,
+        last_verified_at: String,
     }
 
     let row = match sqlx::query_as!(
@@ -101,7 +103,7 @@ pub async fn load_session(conn: &mut PgConnection, user_id: &Uuid) -> Result<Opt
         user_access_token: row.fb_user_access_token,
         app_id: row.fb_app_id,
         user_id: row.fb_user_id,
-        expires_at: row.expires_at.map(Into::into),
-        last_verified_at: row.last_verified_at.into(),
+        expires_at: row.expires_at.map(|value| OffsetDateTime::parse(&value, &time::format_description::well_known::Rfc3339).expect("Invalid stored timestamp").into()),
+        last_verified_at: OffsetDateTime::parse(&row.last_verified_at, &time::format_description::well_known::Rfc3339).expect("Invalid stored timestamp").into(),
     }))
 }

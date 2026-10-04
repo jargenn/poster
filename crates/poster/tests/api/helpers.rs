@@ -5,12 +5,12 @@ use argon2::{
 use expect_test::Expect;
 use http::{HeaderMap, StatusCode};
 use poster::{
-    configuration::{AppConfig, DatabaseSettings, StorageBackend},
+    configuration::{AppConfig, StorageBackend},
     server::{Application, get_connection_pool},
     telemetry::init_tracing,
 };
 use reqwest::Client;
-use sqlx::{Connection, Executor, PgConnection, PgPool};
+use sqlx::SqlitePool;
 use std::{
     sync::LazyLock,
     time::{Duration, SystemTime},
@@ -21,7 +21,7 @@ use uuid::Uuid;
 use wiremock::MockServer;
 
 static TRACING: LazyLock<()> = LazyLock::new(|| {
-    init_tracing();
+    init_tracing(&AppConfig::get_config().expect("Failed to load test configuration"));
 });
 
 pub fn check<T: std::fmt::Debug>(body: T, expect: Expect) {
@@ -43,7 +43,7 @@ impl TestUser {
         }
     }
 
-    async fn store(&self, pool: &PgPool) {
+    async fn store(&self, pool: &SqlitePool) {
         let salt = SaltString::generate(&mut rand_core::OsRng);
         let password_hash = Argon2::new(
             Algorithm::Argon2id,
@@ -53,11 +53,12 @@ impl TestUser {
         .hash_password(self.password.as_bytes(), &salt)
         .unwrap()
         .to_string();
+        let user_id = self.user_id.to_string();
 
         sqlx::query!(
             "INSERT INTO users (user_id, username, password_hash)
                 VALUES ($1, $2, $3)",
-            self.user_id,
+            user_id,
             self.username,
             password_hash,
         )
@@ -69,7 +70,7 @@ impl TestUser {
 
 pub struct TestApp {
     pub address: String,
-    pub pool: PgPool,
+    pub pool: SqlitePool,
     pub facebook_server: MockServer,
     pub test_user: TestUser,
     pub client: Client,
@@ -134,7 +135,7 @@ impl TestApp {
     // }
 }
 
-pub async fn setup_session(pool: &PgPool, user_id: Uuid) {
+pub async fn setup_session(pool: &SqlitePool, user_id: Uuid) {
     let auth = AuthTestData::default();
     let expires_at = auth.expires_at.map(OffsetDateTime::from);
 
@@ -142,6 +143,7 @@ pub async fn setup_session(pool: &PgPool, user_id: Uuid) {
         .acquire()
         .await
         .expect("Failed to get a connection to the DB");
+    let user_id = user_id.to_string();
 
     let inserted = sqlx::query!(
         "INSERT INTO facebook_auth_data (
@@ -177,7 +179,7 @@ pub async fn spawn_app() -> TestApp {
     let configuration = {
         let mut c = AppConfig::get_config().expect("Failed to read configuration.");
         // Use a different database for each test case
-        c.database.database_name = Uuid::new_v4().to_string();
+        c.database.url = format!("sqlite:{}", tmp.path().join("poster.sqlite").display());
         // Use a random OS port
         c.port = 0;
         c.media_settings.storage_settings = StorageBackend::Local {
@@ -189,8 +191,6 @@ pub async fn spawn_app() -> TestApp {
 
         c
     };
-    configure_database(&configuration.database).await;
-
     let client = Client::builder().cookie_store(true).build().unwrap();
 
     let pool = get_connection_pool(&configuration.database);
@@ -215,26 +215,6 @@ pub async fn spawn_app() -> TestApp {
     setup_session(&test_app.pool, test_app.test_user.user_id).await;
 
     test_app
-}
-
-async fn configure_database(config: &DatabaseSettings) {
-    let mut connection = PgConnection::connect_with(&config.without_db())
-        .await
-        .expect("Failed to connect to Postgres.");
-
-    connection
-        .execute(format!(r#"CREATE DATABASE "{}";"#, config.database_name).as_str())
-        .await
-        .expect("Failed to create database.");
-
-    let connection_pool = PgPool::connect_with(config.with_db())
-        .await
-        .expect("Failed to connect to Postgress.");
-
-    sqlx::migrate!("./migrations")
-        .run(&connection_pool)
-        .await
-        .expect("Failed to migrate the database");
 }
 
 struct AuthTestData {

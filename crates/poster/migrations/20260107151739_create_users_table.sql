@@ -1,5 +1,5 @@
 CREATE TABLE users(
-    user_id uuid PRIMARY KEY,
+    user_id TEXT PRIMARY KEY,
     username TEXT NOT NULL UNIQUE,
     password_hash TEXT NOT NULL
 );

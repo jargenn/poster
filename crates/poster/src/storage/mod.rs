@@ -1,4 +1,4 @@
-use sqlx::PgConnection;
+use sqlx::SqliteConnection;
 use tracing::{Instrument, instrument};
 
 use crate::{
@@ -13,7 +13,7 @@ pub mod media_storage;
 
 #[instrument("Saving the post media", skip(conn, media), fields(storage))]
 pub async fn save_post_media(
-    conn: &mut PgConnection,
+    conn: &mut SqliteConnection,
     media: Media,
     storage: &StorageBackend,
 ) -> Result<(), PostSchedulingError> {
@@ -28,21 +28,20 @@ pub async fn save_post_media(
         .await
         .map_err(PostSchedulingError::from)?;
 
-    sqlx::query!(
+    sqlx::query(
         r#"
             INSERT INTO post_media
                 (post_data_id, media_type, storage_key, content_type, size_bytes, width, height)
             VALUES ($1, $2, $3, $4, $5, $6, $7)
             "#,
-        media.post_id,
-        // FIX: I am not considering video
-        String::from(MediaType::Image),
-        storage_key,
-        content_type,
-        i32::try_from(media.asset.metadata.size_bytes).expect("Failed to cast usize to i32"),
-        media.asset.metadata.width.cast_signed(),
-        media.asset.metadata.height.cast_signed(),
     )
+    .bind(media.post_id)
+    .bind(String::from(MediaType::Image))
+    .bind(storage_key)
+    .bind(content_type)
+    .bind(i32::try_from(media.asset.metadata.size_bytes).expect("Failed to cast usize to i32"))
+    .bind(media.asset.metadata.width.cast_signed())
+    .bind(media.asset.metadata.height.cast_signed())
     .execute(conn)
     .instrument(tracing::info_span!("Saving the post_media into the DB"))
     .await

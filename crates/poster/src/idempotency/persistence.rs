@@ -1,25 +1,19 @@
 use axum::{body::Body, response::Response};
 use http::StatusCode;
-use sqlx::PgPool;
+use sqlx::SqlitePool;
 use uuid::Uuid;
 
-#[derive(Debug, sqlx::Type)]
-#[sqlx(type_name = "header_pair")]
-struct HeaderPairRecord {
-    name: String,
-    value: Vec<u8>,
-}
-
 pub async fn get_saved_response(
-    pool: &PgPool,
+    pool: &SqlitePool,
     idempotency_key: super::IdempotencyKey,
     user_id: Uuid,
 ) -> eyre::Result<Option<Response>> {
+    let key = idempotency_key.as_ref().to_owned();
     let saved_response = sqlx::query!(
         r#"
         SELECT
             response_status_code,
-            response_headers as "response_headers: Vec<HeaderPairRecord>",
+            response_headers,
             response_body
         FROM idempotency
         WHERE
@@ -27,7 +21,7 @@ pub async fn get_saved_response(
             idempotency_key = $2
         "#,
         user_id,
-        idempotency_key.as_ref()
+        key
     )
     .fetch_optional(pool)
     .await?;
@@ -37,7 +31,7 @@ pub async fn get_saved_response(
 
         let mut response = Response::builder().status(status_code);
 
-        for HeaderPairRecord { name, value } in r.response_headers {
+        for (name, value) in serde_json::from_str::<Vec<(String, Vec<u8>)>>(&r.response_headers)? {
             response = response.header(name, value);
         }
 

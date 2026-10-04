@@ -1,25 +1,13 @@
-CREATE TYPE scheduled_post_status AS ENUM (
-    'pending',  
-    'processing',
-    'failed',      
-    'cancelled'     
-);
-
-CREATE TYPE post_schedule_mode AS ENUM (
-    'immediate',
-    'scheduled'
-);
-
 CREATE TABLE scheduled_posts (
-    id SERIAL PRIMARY KEY,
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
     post_data_id INT NOT NULL REFERENCES post_data(id) ON DELETE CASCADE,
-    scheduled_for TIMESTAMPTZ NOT NULL,
-    schedule_mode post_schedule_mode NOT NULL,
-    status scheduled_post_status NOT NULL DEFAULT 'processing',
+    scheduled_for TEXT NOT NULL,
+    schedule_mode TEXT NOT NULL CHECK (schedule_mode IN ('immediate', 'scheduled')),
+    status TEXT NOT NULL DEFAULT 'processing' CHECK (status IN ('pending', 'processing', 'failed', 'cancelled')),
     attempts INT NOT NULL DEFAULT 0,
     last_error TEXT,
-    last_attempted_at TIMESTAMPTZ,
-    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    last_attempted_at TEXT,
+    created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
     
     CONSTRAINT attempts_reasonable 
         CHECK (attempts >= 0 AND attempts <= 10),
@@ -28,8 +16,8 @@ CREATE TABLE scheduled_posts (
     CHECK (
         schedule_mode != 'scheduled'
         OR (
-            scheduled_for >= created_at + INTERVAL '10 minutes'
-            AND scheduled_for <= created_at + INTERVAL '30 days'
+            CAST(strftime('%s', scheduled_for) AS INTEGER) >= CAST(strftime('%s', created_at, '+10 minutes') AS INTEGER)
+            AND CAST(strftime('%s', scheduled_for) AS INTEGER) <= CAST(strftime('%s', created_at, '+30 days') AS INTEGER)
         )
     ),
 
@@ -40,7 +28,7 @@ CREATE TABLE scheduled_posts (
         CHECK (status != 'cancelled' OR attempts >= 0),
         
     CONSTRAINT scheduled_after_creation
-        CHECK (scheduled_for >= created_at)
+        CHECK (CAST(strftime('%s', scheduled_for) AS INTEGER) >= CAST(strftime('%s', created_at) AS INTEGER))
 );
 
 CREATE INDEX idx_scheduled_post_data ON scheduled_posts(post_data_id);

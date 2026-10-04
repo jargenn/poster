@@ -31,22 +31,24 @@ pub async fn save(
 
     let config_data = &payload.config_data;
     let app_id = &config_data.app_id;
+    let user_id = user_id.to_string();
 
-    sqlx::query!(
+    sqlx::query(
         "INSERT INTO user_configs(id, app_id, app_secret, app_config_id, redirect_url, description) VALUES ($1,$2,$3,$4,$5,$6);",
-        user_id,
-        app_id,
-        config_data.app_secret,
-        config_data.app_config_id,
-        config_data.redirect_url.to_string(),
-        payload.description
-    ).execute(&mut *conn).await.map_err(Error::Database)?;
+    )
+    .bind(&user_id)
+    .bind(app_id)
+    .bind(&config_data.app_secret)
+    .bind(&config_data.app_config_id)
+    .bind(config_data.redirect_url.to_string())
+    .bind(payload.description)
+    .execute(&mut *conn).await.map_err(Error::Database)?;
 
     debug!("config stored in database");
 
     state
         .fb_app_config
-        .insert(user_id.to_string(), payload.config_data)
+        .insert(user_id, payload.config_data)
         .await;
 
     debug!("config stored in cache");

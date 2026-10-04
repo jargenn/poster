@@ -9,7 +9,7 @@ use wiremock::{
 };
 
 #[tokio::test]
-async fn scheduling_post_is_indempotent() {
+async fn scheduling_post_requests_page_credentials_for_each_submission() {
     let app = spawn_app().await;
     app.seed_logging().await;
 
@@ -19,7 +19,7 @@ async fn scheduling_post_is_indempotent() {
     Mock::given(path("/v24.0/test_user_id/accounts"))
         .and(method("GET"))
         .respond_with(ResponseTemplate::new(202))
-        .expect(1)
+        .expect(2)
         .mount(&app.facebook_server)
         .await;
 

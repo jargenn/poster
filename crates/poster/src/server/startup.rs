@@ -6,8 +6,8 @@ use facebook_graph_api::auth::Authorized;
 use http::{HeaderValue, Method, header};
 use moka::future::{Cache, CacheBuilder};
 use reqwest::Url;
-use sqlx::PgPool;
-use sqlx::postgres::PgPoolOptions;
+use sqlx::SqlitePool;
+use sqlx::sqlite::SqlitePoolOptions;
 use std::time::Duration;
 use tokio::net::TcpListener;
 use tokio::signal;
@@ -19,7 +19,7 @@ use tower_http::services::ServeDir;
 use tower_http::trace::{DefaultOnFailure, DefaultOnRequest, DefaultOnResponse, TraceLayer};
 use tower_sessions::cookie::SameSite;
 use tower_sessions::{ExpiredDeletion, Expiry, SessionManagerLayer};
-use tower_sessions_sqlx_store::PostgresStore;
+use tower_sessions_sqlx_store::SqliteStore;
 use tracing::{error, info, warn};
 
 use crate::configuration::{DatabaseSettings, FbAppData, MediaSettings};
@@ -35,6 +35,7 @@ pub struct Application {
 impl Application {
     pub async fn build(config: AppConfig) -> eyre::Result<Self> {
         let connection_pool = get_connection_pool(&config.database);
+        sqlx::migrate!("./migrations").run(&connection_pool).await?;
 
         let fb_app_config = CacheBuilder::new(100)
             .name(&config.caches.session_data.name)
@@ -76,7 +77,7 @@ impl Application {
             facebook_uri,
         };
 
-        let session_store = PostgresStore::new(state.pool.clone());
+        let session_store = SqliteStore::new(state.pool.clone());
 
         session_store.migrate().await?;
 
@@ -133,7 +134,7 @@ impl Application {
 pub fn run(
     listener: TcpListener,
     state: PosterState,
-    session_layer: SessionManagerLayer<PostgresStore>,
+    session_layer: SessionManagerLayer<SqliteStore>,
 ) -> Server {
     let page_api = Router::new()
         .route(
@@ -209,8 +210,8 @@ pub fn run(
     axum::serve(listener, router)
 }
 
-pub fn get_connection_pool(config: &DatabaseSettings) -> PgPool {
-    PgPoolOptions::new()
+pub fn get_connection_pool(config: &DatabaseSettings) -> SqlitePool {
+    SqlitePoolOptions::new()
         .max_connections(10)
         .acquire_timeout(Duration::from_secs(2))
         .connect_lazy_with(config.with_db())
@@ -242,7 +243,7 @@ async fn shutdown_signal(deletion_task_abort_handle: AbortHandle) {
 
 #[derive(Debug, Clone)]
 pub struct PosterState {
-    pub pool: PgPool,
+    pub pool: SqlitePool,
     pub fb_app_config: Cache<String, FbAppData>,
     pub session_cache: Cache<String, Authorized>,
     pub media_settings: MediaSettings,

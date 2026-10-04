@@ -11,3 +11,7 @@
 *.bunyan
 *.env
 .direnv/
+/.cargo/*
+!/.cargo/config.toml
+!/.cargo/audit.toml
+

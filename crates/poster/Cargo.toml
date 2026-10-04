@@ -26,8 +26,7 @@ thiserror = "2.0.17"
 serde_json.workspace = true
 sqlx = { version = "0.8", features = [
   "runtime-tokio",
-  "tls-rustls-ring-webpki",
-  "postgres",
+  "sqlite",
   "time",
   "migrate",
   "uuid"
@@ -44,7 +43,7 @@ tracing-opentelemetry = "0.32.0"
 opentelemetry_sdk = { version = "0.31.0", features = ["rt-tokio"] }
 argon2 = "0.5.3"
 tower-sessions = "0.14.0"
-tower-sessions-sqlx-store = { version = "0.15.0", features = ["postgres"] }
+tower-sessions-sqlx-store = { version = "0.15.0", features = ["sqlite"] }
 aws-config = { version = "1.8.12", features = ["behavior-version-latest"] }
 
 

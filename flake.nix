@@ -143,10 +143,6 @@
           };
 
           devShells.default = pkgs.mkShell {
-            inputsFrom = [
-              config.devShells.rust
-            ];
-
             packages =
               with pkgs;
               [
@@ -167,7 +163,6 @@
                 just
                 sqlx-cli
                 sccache
-                postgresql
                 dive
               ]
               ++ pkgs.lib.optionals pkgs.stdenv.isDarwin [

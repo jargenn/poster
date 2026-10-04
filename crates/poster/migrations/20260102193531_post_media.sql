@@ -1,5 +1,5 @@
 CREATE TABLE post_media (
-    id SERIAL PRIMARY KEY,
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
     post_data_id INT NOT NULL
         REFERENCES post_data(id) ON DELETE CASCADE,
     media_type TEXT NOT NULL
@@ -9,7 +9,7 @@ CREATE TABLE post_media (
     size_bytes INT NOT NULL,
     width INT,
     height INT,
-    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
 
     CONSTRAINT storage_key_not_empty
         CHECK (LENGTH(storage_key) > 0),

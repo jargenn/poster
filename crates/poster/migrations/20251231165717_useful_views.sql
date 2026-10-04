@@ -30,7 +30,7 @@ SELECT
 FROM scheduled_posts sp
 JOIN post_data pd ON sp.post_data_id = pd.id
 WHERE sp.status = 'pending'
-    AND sp.scheduled_for <= NOW() + INTERVAL '10 minutes'
+    AND CAST(strftime('%s', sp.scheduled_for) AS INTEGER) <= CAST(strftime('%s', 'now', '+10 minutes') AS INTEGER)
 ORDER BY sp.scheduled_for ASC;
 
 CREATE VIEW v_user_posting_history AS

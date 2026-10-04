@@ -6,19 +6,13 @@ CREATE TABLE user_configs (
     app_config_id TEXT NOT NULL,
     redirect_url TEXT NOT NULL,
     description TEXT,
-    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
+    updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
 );
 
-CREATE OR REPLACE FUNCTION update_updated_at_column()
-RETURNS TRIGGER AS $$
-BEGIN
-    NEW.updated_at = NOW();
-    RETURN NEW;
-END;
-$$ language 'plpgsql';
-
 CREATE TRIGGER update_user_configs_updated_at 
-    BEFORE UPDATE ON user_configs
-    FOR EACH ROW
-    EXECUTE FUNCTION update_updated_at_column();
+    AFTER UPDATE ON user_configs
+    FOR EACH ROW WHEN NEW.updated_at = OLD.updated_at
+    BEGIN
+        UPDATE user_configs SET updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id = NEW.id;
+    END;

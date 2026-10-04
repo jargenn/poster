@@ -1,10 +1,10 @@
 CREATE TABLE post_data (
-    id SERIAL PRIMARY KEY,
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
     user_id TEXT NOT NULL,
     page_id TEXT NOT NULL,
     content TEXT NOT NULL,
     link TEXT,
-    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
     has_media BOOLEAN NOT NULL DEFAULT FALSE,
     
     CONSTRAINT content_not_empty 

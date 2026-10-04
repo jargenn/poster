@@ -10,7 +10,7 @@ use http::{HeaderMap, StatusCode};
 use reqwest::Client;
 use secrecy::SecretString;
 use serde::Deserialize;
-use sqlx::PgConnection;
+use sqlx::SqliteConnection;
 use tracing::instrument;
 
 use crate::{
@@ -46,7 +46,7 @@ pub async fn facebooks_pages(
     Ok(Json(fb_pages))
 }
 
-async fn get_auth(session: TypedSession, conn: &mut PgConnection) -> Result<Authorized, Error> {
+async fn get_auth(session: TypedSession, conn: &mut SqliteConnection) -> Result<Authorized, Error> {
     let Some(user_id) = session.get_user_id().await.map_err(Error::SessionError)? else {
         todo!("None user_id")
     };
