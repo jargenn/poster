@@ -1,4 +1,4 @@
-name: upload to binary cache
+name: build and check
 
 on:
   workflow_dispatch:
@@ -10,7 +10,7 @@ on:
       - Cargo.lock
       - Cargo.toml
       - "**/*.rs"
-      - .github/workflows/push-cache.yml
+      - .github/workflows/build-and-check.yml
 
 jobs:
   build:
@@ -68,3 +68,17 @@ jobs:
           nix copy \
             --to 's3://dev-cache?endpoint=https://4c234996065a53823c009795aa7b5bf4.r2.cloudflarestorage.com/dev-cache' \
             $PATHS
+
+  check:
+    runs-on: ubuntu-latest
+    needs: build
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Install Nix
+        uses: DeterminateSystems/nix-installer-action@main
+
+      - name: Check flake
+        run: nix flake check
