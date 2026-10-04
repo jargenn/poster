@@ -1,0 +1,70 @@
+name: upload to binary cache
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - flake.nix
+      - flake.lock
+      - Cargo.lock
+      - Cargo.toml
+      - "**/*.rs"
+      - .github/workflows/push-cache.yml
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: read
+
+    env:
+      AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+      AWS_ENDPOINT_URL: ${{ secrets.R2_ENDPOINT }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Install Nix
+        uses: DeterminateSystems/nix-installer-action@main
+
+      - name: Configure Nix
+        run: |
+          mkdir -p ~/.config/nix
+
+          cat > ~/.config/nix/nix.conf <<EOF
+          experimental-features = nix-command flakes
+          substituters = https://devcache.lautaroacosta.com/dev-cache https://cache.nixos.org/
+          trusted-public-keys = cache.nixos.org-1:6NCHdD59X431o0gWypbMrAURkbJ16ZPMQFGspcDShjY= dev-cache:lV4Nej+9+n3g2uAgGKIBpaffUvzKR1essUx1opU33/0=
+          EOF
+
+      - name: Build
+        run: |
+          nix build .#default
+
+      - name: Sign
+        env:
+          NIX_CACHE_PRIVATE_KEY: ${{ secrets.NIX_CACHE_PRIVATE_KEY }}
+        run: |
+          printf '%s\n' "$NIX_CACHE_PRIVATE_KEY" > /tmp/cache-key
+
+          DRV=$(nix path-info --derivation .#default)
+          PATHS=$(nix-store --query --requisites --include-outputs "$DRV")
+
+          nix store sign \
+            --key-file /tmp/cache-key \
+            $PATHS
+
+          rm /tmp/cache-key
+
+      - name: Push to R2
+        run: |
+          DRV=$(nix path-info --derivation .#default)
+          PATHS=$(nix-store --query --requisites --include-outputs "$DRV")
+
+          nix copy \
+            --to 's3://dev-cache?endpoint=https://4c234996065a53823c009795aa7b5bf4.r2.cloudflarestorage.com/dev-cache' \
+            $PATHS

@@ -18,6 +18,11 @@
 
     crane.url = "github:ipetkov/crane";
 
+    rust-overlay = {
+      url = "github:oxalica/rust-overlay";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
+
     advisory-db = {
       url = "github:rustsec/advisory-db";
       flake = false;
@@ -28,6 +33,7 @@
     inputs@{
       flake-parts,
       crane,
+      rust-overlay,
       advisory-db,
       ...
     }:
@@ -44,6 +50,8 @@
         { pkgs, config, ... }:
         let
           craneLib = crane.mkLib pkgs;
+          rustPkgs = pkgs.extend rust-overlay.overlays.default;
+          rustToolchain = rustPkgs.rust-bin.stable."1.99.0".default;
 
           src = pkgs.lib.fileset.toSource {
             root = ./.;
@@ -58,6 +66,7 @@
 
           commonArgs = {
             inherit src;
+            pname = "poster";
             cargoExtraArgs = "--package poster --bin poster";
             strictDeps = true;
             env.SQLX_OFFLINE = true;
@@ -139,6 +148,7 @@
 
             deny = craneLib.cargoDeny {
               inherit src;
+              pname = "poster";
             };
           };
 
@@ -153,10 +163,7 @@
                 cargo-machete
                 cargo-deny
                 cargo-insta
-                rustc
-                cargo
-                rustfmt
-                clippy
+                rustToolchain
                 rust-analyzer
                 llvmPackages.llvm
                 pkg-config

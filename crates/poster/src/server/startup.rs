@@ -2,7 +2,7 @@ use axum::Router;
 use axum::routing::post;
 use axum::serve::Serve;
 use axum::{Extension, body::Body, http, routing::get};
-use facebook_graph_api::auth::Authorized;
+use auth::Authorized;
 use http::{HeaderValue, Method, header};
 use moka::future::{Cache, CacheBuilder};
 use reqwest::Url;

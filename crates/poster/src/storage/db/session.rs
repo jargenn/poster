@@ -1,6 +1,6 @@
 use color_eyre::owo_colors::OwoColorize;
 use eyre::Result;
-use facebook_graph_api::auth::Authorized;
+use auth::Authorized;
 use sqlx::SqliteConnection;
 use time::OffsetDateTime;
 use tracing::{debug, error, info, instrument};
@@ -51,7 +51,10 @@ pub async fn store_oauth_data(
     skip(conn),
     fields(user_id= %user_id.bold())
 )]
-pub async fn load_session(conn: &mut SqliteConnection, user_id: &Uuid) -> Result<Option<Authorized>> {
+pub async fn load_session(
+    conn: &mut SqliteConnection,
+    user_id: &Uuid,
+) -> Result<Option<Authorized>> {
     debug!("searching for access_token in the database");
     let user_id = user_id.to_string();
 
@@ -103,7 +106,16 @@ pub async fn load_session(conn: &mut SqliteConnection, user_id: &Uuid) -> Result
         user_access_token: row.fb_user_access_token,
         app_id: row.fb_app_id,
         user_id: row.fb_user_id,
-        expires_at: row.expires_at.map(|value| OffsetDateTime::parse(&value, &time::format_description::well_known::Rfc3339).expect("Invalid stored timestamp").into()),
-        last_verified_at: OffsetDateTime::parse(&row.last_verified_at, &time::format_description::well_known::Rfc3339).expect("Invalid stored timestamp").into(),
+        expires_at: row.expires_at.map(|value| {
+            OffsetDateTime::parse(&value, &time::format_description::well_known::Rfc3339)
+                .expect("Invalid stored timestamp")
+                .into()
+        }),
+        last_verified_at: OffsetDateTime::parse(
+            &row.last_verified_at,
+            &time::format_description::well_known::Rfc3339,
+        )
+        .expect("Invalid stored timestamp")
+        .into(),
     }))
 }

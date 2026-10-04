@@ -1,5 +1,5 @@
 use axum::extract::FromRequestParts;
-use facebook_graph_api::auth::CsrfToken;
+use auth::CsrfToken;
 use tower_sessions::{Session, session::Error};
 use tracing::instrument;
 use uuid::Uuid;

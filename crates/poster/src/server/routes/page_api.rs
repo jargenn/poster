@@ -24,9 +24,9 @@ use crate::{
 };
 use facebook_graph_api::{
     FacebookPost, Input,
-    auth::Authorized,
     page_api::{FacebookPages, Page, get_facebook_pages, get_page_credentials},
 };
+use auth::Authorized;
 
 #[instrument(skip(client, auth))]
 pub async fn facebooks_pages(

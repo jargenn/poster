@@ -1,0 +1,38 @@
+{
+  "db_name": "SQLite",
+  "query": "\n        select\n            app_id,\n            app_secret,\n            app_config_id,\n            redirect_url\n        from user_configs where id = $1\n    ",
+  "describe": {
+    "columns": [
+      {
+        "name": "app_id",
+        "ordinal": 0,
+        "type_info": "Text"
+      },
+      {
+        "name": "app_secret",
+        "ordinal": 1,
+        "type_info": "Text"
+      },
+      {
+        "name": "app_config_id",
+        "ordinal": 2,
+        "type_info": "Text"
+      },
+      {
+        "name": "redirect_url",
+        "ordinal": 3,
+        "type_info": "Text"
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "d737e221b3ca9ee475a61afeafea9bfaa3664fdc6901384591acc1fc60f7ad93"
+}

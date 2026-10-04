@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "INSERT INTO facebook_auth_data (\n                user_id,\n                fb_user_access_token,\n                fb_app_id,\n                fb_user_id,\n                expires_at\n            )\n            VALUES ($1, $2, $3, $4, $5)\n            ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 5
+    },
+    "nullable": []
+  },
+  "hash": "2500fd1f87e38985af2aeb7e4fae29c37f6bd0ad6f02e4ba9877705be261114a"
+}

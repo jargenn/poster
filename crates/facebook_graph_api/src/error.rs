@@ -16,9 +16,6 @@ use crate::{ErrorCode, PostError};
 #[derive(Debug, thiserror::Error)]
 #[error("Facebook client code")]
 pub enum Error {
-    // TODO: Wouldn't this be repeated from what ErrorCode could tell me?
-    #[error(transparent)]
-    Auth(#[from] AuthError),
     #[error(transparent)]
     GraphApi(#[from] GraphApiError),
     #[error("Network error: {0}")]
@@ -38,15 +35,6 @@ impl IntoResponse for Error {
             Error::PostError(post_error) => {
                 // now post_error: PostError (owned)
                 post_error.into_response()
-            }
-
-            Error::Auth(err) => {
-                tracing::warn!(error = %err, "authentication failed");
-                (
-                    StatusCode::UNAUTHORIZED,
-                    Json(json!({ "error": err.to_string() })),
-                )
-                    .into_response()
             }
 
             Error::GraphApi(err) => {
@@ -89,8 +77,7 @@ impl IntoResponse for Error {
 }
 
 #[derive(Debug, Clone, thiserror::Error)]
-#[error(
-    "Graph API Error\n  Code: {code}\n  Type: {error_type}\n  Reason: {}\n  Details: {help_message}\n  Trace: {trace_id}", code.canonical_reason().unwrap_or("Unknown reason")
+#[error( "Graph API Error\n  Code: {code}\n  Type: {error_type}\n  Reason: {}\n  Details: {help_message}\n  Trace: {trace_id}", code.canonical_reason().unwrap_or("Unknown reason")
 )]
 pub struct GraphApiError {
     pub help_message: String,
@@ -155,18 +142,6 @@ struct GraphApiErrorData {
     error_user_msg: Option<String>,
     #[serde(rename = "fbtrace_id")]
     trace_id: String,
-}
-
-#[derive(Debug, thiserror::Error)]
-pub enum AuthError {
-    #[error("The access token you are using doesn't belong to the this App")]
-    WrongApp,
-    #[error("Provided access token is no longer valid")]
-    InvalidToken,
-    #[error("You are not logged in to the App")]
-    NotLoggedIn,
-    #[error("Access token has expired")]
-    Expired,
 }
 
 #[cfg(test)]

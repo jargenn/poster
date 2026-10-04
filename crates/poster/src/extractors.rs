@@ -7,7 +7,7 @@ use tracing::{debug, instrument};
 use uuid::Uuid;
 
 use crate::{server::PosterState, storage::db::session::load_session};
-use facebook_graph_api::auth::Authorized;
+use auth::Authorized;
 
 pub struct Auth(pub Authorized);
 

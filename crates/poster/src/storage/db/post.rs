@@ -71,7 +71,11 @@ pub async fn schedule_post(
                 .decode()
                 .await?
                 .plan(&process_settings)?
-                .process(i32::try_from(post_data_id).expect("SQLite post id exceeds i32"), user_id, page_id)
+                .process(
+                    i32::try_from(post_data_id).expect("SQLite post id exceeds i32"),
+                    user_id,
+                    page_id,
+                )
                 .await
         }
         .instrument(tracing::info_span!("Media processing pipeline"))
@@ -124,7 +128,8 @@ pub async fn submit_posts(
     let num_posts = fb_posts.len();
 
     let mut media_content = Vec::with_capacity(num_posts);
-    let mut scheduled_for: Vec<(Option<OffsetDateTime>, ScheduleMode)> = Vec::with_capacity(num_posts);
+    let mut scheduled_for: Vec<(Option<OffsetDateTime>, ScheduleMode)> =
+        Vec::with_capacity(num_posts);
 
     for fb_post in &fb_posts {
         let FacebookPost {
@@ -142,7 +147,10 @@ pub async fn submit_posts(
                 scheduled_for.push((None, ScheduleMode::Immediate));
             }
             Some(st) => {
-                scheduled_for.push((Some(st.try_into().map_err(PostSchedulingError::from)?), ScheduleMode::Scheduled));
+                scheduled_for.push((
+                    Some(st.try_into().map_err(PostSchedulingError::from)?),
+                    ScheduleMode::Scheduled,
+                ));
             }
         }
     }
@@ -187,7 +195,7 @@ pub async fn submit_posts(
                     .decode()
                     .await?
                     .plan(&process_settings)?
-            .process(post_data_id, user_id, page_id)
+                    .process(post_data_id, user_id, page_id)
                     .await
             }
             .instrument(tracing::info_span!("Media processing pipeline"))

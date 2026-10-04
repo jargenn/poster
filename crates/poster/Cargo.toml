@@ -2,6 +2,7 @@
 name = "poster"
 edition = "2024"
 version.workspace = true
+rust-version.workspace = true
 
 [dependencies]
 axum = { version = "0.8.8", features = ["macros","multipart"] }
@@ -22,6 +23,7 @@ uuid = { workspace = true, features = ["serde"] }
 serde.workspace = true
 opentelemetry-otlp = {version = "0.31.0", features = ["serialize"] }
 facebook_graph_api = { path = "../facebook_graph_api/", features = ["axum","time"]}
+auth = { path = "../auth" }
 thiserror = "2.0.17"
 serde_json.workspace = true
 sqlx = { version = "0.8", features = [

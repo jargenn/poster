@@ -1,6 +1,8 @@
 mod flows;
 pub use flows::*;
 
+pub use auth::Authorized;
+
 mod post;
 pub use post::*;
 

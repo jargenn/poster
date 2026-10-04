@@ -1,14 +1,5 @@
 /target
-*.db
-*.yml
-*.yaml
-*.json
-*.csv
 /configuration
-/cartero
-/storage
-**/storage
-*.bunyan
 *.env
 .direnv/
 /.cargo/*

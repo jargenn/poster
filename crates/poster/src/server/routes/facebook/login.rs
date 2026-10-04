@@ -10,7 +10,7 @@ use axum::{
     extract::{Query, State},
     response::{IntoResponse, Redirect, Response},
 };
-use facebook_graph_api::auth::{CsrfToken, OAuth, RedirectUri};
+use auth::{CsrfToken, FacebookProvider, OAuth, RedirectUri};
 use reqwest::{Client, StatusCode};
 use tracing::{debug, error, info, instrument, warn};
 
@@ -68,7 +68,10 @@ pub async fn fb_login(
 
     error!(%config.app_config_id,"App config id");
 
-    let (redirect_url, csrf_token) = start_auth.redirect(&config.app_config_id);
+    let provider = FacebookProvider {
+        config_id: config.app_config_id.clone(),
+    };
+    let (redirect_url, csrf_token) = start_auth.redirect(&provider);
     let redirect = Redirect::temporary(redirect_url.as_str());
 
     session
@@ -186,10 +189,13 @@ pub async fn fb_callback(
     };
 
     let redirected = OAuth::from_callback(code, CsrfToken::from(stored_csrf), redirect_uri);
+    let provider = FacebookProvider {
+        config_id: config.app_config_id.clone(),
+    };
 
     error!(secret=%config.app_secret, "App secret used");
     let token_issued = match redirected
-        .exchange_token(&client, &config.app_id, &config.app_secret)
+        .exchange_token(&provider, &client, &config.app_id, &config.app_secret)
         .await
     {
         Ok(a) => a,
@@ -202,7 +208,7 @@ pub async fn fb_callback(
     tracing::debug!("Token exchanged");
 
     let auth_token = match token_issued
-        .verify(&client, &config.app_id, &config.app_secret)
+        .verify(&provider, &client, &config.app_id, &config.app_secret)
         .await
     {
         Ok(auth) => auth,

@@ -1,4 +1,4 @@
-use facebook_graph_api::auth::RedirectUri;
+use auth::RedirectUri;
 use serde::Deserialize;
 
 #[derive(Debug, Deserialize, Clone)]
