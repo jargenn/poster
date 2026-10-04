@@ -10,3 +10,4 @@
 **/storage
 *.bunyan
 *.env
+.direnv/
