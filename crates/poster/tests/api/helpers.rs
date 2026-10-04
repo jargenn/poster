@@ -21,7 +21,7 @@ use uuid::Uuid;
 use wiremock::MockServer;
 
 static TRACING: LazyLock<()> = LazyLock::new(|| {
-    init_tracing(&AppConfig::get_config().expect("Failed to load test configuration"));
+    init_tracing();
 });
 
 pub fn check<T: std::fmt::Debug>(body: T, expect: Expect) {

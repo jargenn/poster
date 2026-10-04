@@ -8,7 +8,7 @@ use tracing::error;
 async fn main() -> Result<()> {
     color_eyre::install()?;
     let config = AppConfig::get_config()?;
-    telemetry::init_tracing(&config);
+    telemetry::init_tracing();
     dbg!(&config);
 
     let server = Application::build(config).await?;

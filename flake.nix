@@ -49,9 +49,9 @@
       perSystem =
         { pkgs, config, ... }:
         let
-          craneLib = crane.mkLib pkgs;
           rustPkgs = pkgs.extend rust-overlay.overlays.default;
           rustToolchain = rustPkgs.rust-bin.stable."1.99.0".default;
+          craneLib = (crane.mkLib pkgs).overrideToolchain rustToolchain;
 
           src = pkgs.lib.fileset.toSource {
             root = ./.;
